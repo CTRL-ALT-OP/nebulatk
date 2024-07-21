@@ -1,0 +1,17 @@
+MANIFEST.in
+README.md
+pyproject.toml
+examples/Images/background.png
+nebulatk/__init__.py
+nebulatk/bounds_manager.py
+nebulatk/colors_manager.py
+nebulatk/fonts_manager.py
+nebulatk/image_manager.py
+nebulatk/initialize.py
+nebulatk/nebulatk.py
+nebulatk/standard_methods.py
+nebulatk.egg-info/PKG-INFO
+nebulatk.egg-info/SOURCES.txt
+nebulatk.egg-info/dependency_links.txt
+nebulatk.egg-info/requires.txt
+nebulatk.egg-info/top_level.txt
