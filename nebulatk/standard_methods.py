@@ -40,10 +40,7 @@ def check(_object, attribute):
     Returns:
         bool: Returns True if both checks are satisfied, False otherwise
     """
-    if hasattr(_object, attribute):
-        if getattr(_object, attribute) is not None:
-            return True
-    return False
+    return bool(hasattr(_object, attribute) and getattr(_object, attribute) is not None)
 
 
 # Unfortunately not included in the python math library
@@ -106,18 +103,13 @@ def text_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
-    if hasattr(_object, val):
-        if getattr(_object, val) is not None:
-            for obj in TEXT_OBJECTS:
-                if hasattr(_object, obj):
-                    if val == obj:
-                        _object.master.change_state(
-                            getattr(_object, obj), state="normal"
-                        )
-                    else:
-                        _object.master.change_state(
-                            getattr(_object, obj), state="hidden"
-                        )
+    if hasattr(_object, val) and getattr(_object, val) is not None:
+        for obj in TEXT_OBJECTS:
+            if hasattr(_object, obj):
+                if val == obj:
+                    _object.master.change_state(getattr(_object, obj), state="normal")
+                else:
+                    _object.master.change_state(getattr(_object, obj), state="hidden")
 
 
 def flop_off(_object):
@@ -138,27 +130,28 @@ def flop_on(_object):
         _object (nebulatk.Widget): widget
     """
     _object.visible = True
-    if _object.state == False:
-        if _object.hovering:
-            image_flop(_object, "hover_object")
-        else:
-            image_flop(_object, "image_object")
-    else:
+    if _object.state:
         if _object.hovering:
             image_flop(_object, "hover_object_active")
         else:
             image_flop(_object, "active_object")
-    if _object.bg_object_active is not None and not _object.state:
-        bg_flop(_object, "bg_object")
+    elif _object.hovering:
+        image_flop(_object, "hover_object")
+    else:
+        image_flop(_object, "image_object")
+    if _object.bg_object_active is not None:
+        if _object.state:
+            bg_flop(_object, "bg_object_active")
 
-    elif _object.bg_object_active is not None:
-        bg_flop(_object, "bg_object_active")
+        else:
+            bg_flop(_object, "bg_object")
 
-    if _object.active_text_object is not None and not _object.state:
-        text_flop(_object, "text_object")
+    if _object.active_text_object is not None:
+        if _object.state:
+            text_flop(_object, "active_text_object")
 
-    elif _object.active_text_object is not None:
-        text_flop(_object, "active_text_object")
+        else:
+            text_flop(_object, "text_object")
 
     _object.master.change_state(_object.text_object, "normal")
     _object.master.change_state(_object.slider_bg_object, "normal")
@@ -207,10 +200,10 @@ def hovered_toggle(_object):
         _object (nebulatk.Widget): widget
     """
     if _object.visible:
-        if _object.state == False:
-            image_flop(_object, "hover_object")
-        else:
+        if _object.state:
             image_flop(_object, "hover_object_active")
+        else:
+            image_flop(_object, "hover_object")
 
 
 def hover_end(_object):
@@ -220,12 +213,12 @@ def hover_end(_object):
         _object (nebulatk.Widget): widget
     """
     if _object.visible:
-        if _object.state == False:
+        if not _object.state:
+            image_flop(_object, "active_object")
+        else:
             image_flop(_object, "image_object")
             if _object.active_text_object is not None:
                 text_flop(_object, "text_object")
-        if _object.state == True:
-            image_flop(_object, "active_object")
         if _object.bg_object_active is not None:
             bg_flop(_object, "bg_object")
 
@@ -253,28 +246,29 @@ def toggle_object_toggle(_object):
         _object (nebulatk.Widget): widget
     """
     _object.state = not _object.state
-    if _object.state == False:
-        if _object.hovering:
-            image_flop(_object, "hover_object")
-        else:
-            image_flop(_object, "image_object")
-    else:
+    if _object.state:
         if _object.hovering:
             image_flop(_object, "hover_object_active")
         else:
             image_flop(_object, "active_object")
 
-    if check(_object, "bg_object_active") and not _object.state:
-        bg_flop(_object, "bg_object")
+    elif _object.hovering:
+        image_flop(_object, "hover_object")
+    else:
+        image_flop(_object, "image_object")
+    if check(_object, "bg_object_active"):
+        if not _object.state:
+            bg_flop(_object, "bg_object")
 
-    elif check(_object, "bg_object_active"):
-        bg_flop(_object, "bg_object_active")
+        else:
+            bg_flop(_object, "bg_object_active")
 
-    if check(_object, "active_text_object") and not _object.state:
-        text_flop(_object, "text_object")
+    if check(_object, "active_text_object"):
+        if not _object.state:
+            text_flop(_object, "text_object")
 
-    elif check(_object, "active_text_object"):
-        text_flop(_object, "active_text_object")
+        else:
+            text_flop(_object, "active_text_object")
 
 
 # ------------------------------------------------------------ CLICK BEHAVIOUR --------------------------------------------------------------
@@ -408,47 +402,50 @@ def place_bulk(_object):
                 _object,
                 img_object,
                 _object.master.create_image(
-                    _object.x+_object.border_width,
-                    _object.y+_object.border_width,
+                    _object.x + _object.border_width,
+                    _object.y + _object.border_width,
                     getattr(_object, img),
                     state=state,
-                )
+                ),
             )
 
     # Place text objects
     if _object.text != "":
+        generate_text(_object)
 
-        # Set x offset and anchor based on justify
-        if _object.justify == "center":
-            local_x = _object.x + (_object.width / 2)
-            anchor = "center"
 
-        if _object.justify == "left":
-            local_x = _object.x
-            anchor = "w"
+def generate_text(_object):
+    # Set x offset and anchor based on justify
+    if _object.justify == "center":
+        local_x = _object.x + (_object.width / 2)
+        anchor = "center"
 
-        if _object.justify == "right":
-            local_x = _object.x + _object.width
-            anchor = "e"
+    elif _object.justify == "left":
+        local_x = _object.x
+        anchor = "w"
 
-        # Set y offset
-        local_y = _object.y + (_object.height / 2)
+    elif _object.justify == "right":
+        local_x = _object.x + _object.width
+        anchor = "e"
 
-        _object.text_object = _object.master.create_text(
+    # Set y offset
+    local_y = _object.y + (_object.height / 2)
+
+    _object.text_object = _object.master.create_text(
+        local_x,
+        local_y,
+        text=_object.text,
+        font=_object.font,
+        fill=_object.text_color,
+        anchor=anchor,
+    )
+    if _object.active_text_color is not None:
+        _object.active_text_object = _object.master.create_text(
             local_x,
             local_y,
             text=_object.text,
             font=_object.font,
-            fill=_object.text_color,
+            fill=_object.active_text_color,
             anchor=anchor,
+            state="hidden",
         )
-        if _object.active_text_color is not None:
-            _object.active_text_object = _object.master.create_text(
-                local_x,
-                local_y,
-                text=_object.text,
-                font=_object.font,
-                fill=_object.active_text_color,
-                anchor=anchor,
-                state="hidden",
-            )

@@ -1,13 +1,13 @@
-from nebulatk import *
+from .. import nebulatk as ntk
 
 
 def __main__():
-    canvas = Window()
-    Frame(canvas, image="Images/background.png", width=500, height=500).place(0, 0)
+    canvas = ntk.Window()
+    ntk.Frame(canvas, image="Images/background.png", width=500, height=500).place(0, 0)
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
-    Button(
+    ntk.Button(
         canvas,
         text="hillo",
         fill=[255, 66, 66, 15],
@@ -17,7 +17,7 @@ def __main__():
         hover_image_active="Images/main_button_active2.png",
         mode="toggle",
     ).place(0, 0)
-    Button(
+    ntk.Button(
         canvas,
         text="hi",
         font=("Helvetica", 50),

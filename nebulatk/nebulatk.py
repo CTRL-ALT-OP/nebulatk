@@ -1,26 +1,26 @@
 # Import tkinter and filedialog
+import sys
+import threading
 import tkinter as tk
-from tkinter import filedialog as tkfile_dialog
 
 # Import python standard packages
 from time import sleep
-import threading
-import sys
+from tkinter import filedialog as tkfile_dialog
 
 # Importing from another file works differently than if running this file directly for some reason.
 # Import all required modules from nebulatk
 try:
-    from . import image_manager
-    from . import fonts_manager
-    from . import bounds_manager
-    from . import colors_manager
-    from . import initialize
-    from . import standard_methods
+    from . import (
+        bounds_manager,
+        fonts_manager,
+        image_manager,
+        initialize,
+        standard_methods,
+    )
 except ImportError:
-    import image_manager
-    import fonts_manager
     import bounds_manager
-    import colors_manager
+    import fonts_manager
+    import image_manager
     import initialize
     import standard_methods
 
@@ -86,7 +86,7 @@ class _widget:
         x = int(x)
         y = int(y)
 
-        if self.bg_object == None and self.image_object == None:
+        if self.bg_object is None and self.image_object is None:
             standard_methods.place_bulk(self)
             if self.bg_object is not None and self.bounds_type == "box":
                 self.object = self.bg_object
@@ -110,10 +110,11 @@ class _widget:
     def update(self):
         standard_methods.delete(self)
         self.place(self.x, self.y)
-        
-    
+
     # Default configure behavior
-    def configure(self, x=None, y=None, width = None, height = None, text=None, fill="Default"):
+    def configure(
+        self, x=None, y=None, width=None, height=None, text=None, fill="Default"
+    ):
         """Configure the widget with the specified parameters
 
         Args:
@@ -143,16 +144,15 @@ class _widget:
         if fill != "Default":
             self.fill = fill
             self.update()
-            
+
         if width is not None:
             self.width = width
             self.update()
-            
+
         if height is not None:
             self.height = height
             self.update()
-            
-        
+
         # Update the bounds for this widget
         bounds_manager.update_bounds(self, x, y, mode=self.bounds_type)
 
@@ -169,7 +169,7 @@ class _widget:
 
 # Our implementation of tkinter's file_dialog.
 # This mostly just exists so that the user doesn't have to import nebulatk and tkinter
-def FileDialog(window, initialdir=None, mode="r", filetypes=[("All files", "*")]):
+def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
     """Identical to tkinter.FileDialog
 
     Args:
@@ -628,7 +628,7 @@ class Entry(_widget):
         # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the d==played slice of self.entire_text
         # Backspace character
         if character == "\x08":
-            self.entire_text = self.entire_text[0:-1]
+            self.entire_text = self.entire_text[:-1]
 
         # If the character == a v==ible character
         elif character in fonts_manager.ALPHANUMERIC_PLUS:
@@ -861,21 +861,19 @@ class _window_internal(threading.Thread):
         self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
     ):
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
-        if fill is not None:
-            if len(fill) > 7:
-                # If it ==, we need to create an image with transparency instead of a normal rectangle
-                bg_image = image_manager.create_image(
-                    fill, widt, height, outline, border_width
-                )
-                self.images.append(bg_image)
-                return self.create_image(x, y, bg_image, state=state)
-            
+        if fill is not None and len(fill) > 7:
+            bg_image = image_manager.create_image(
+                fill, widt, height, outline, border_width
+            )
+            self.images.append(bg_image)
+            return self.create_image(x, y, bg_image, state=state)
+
         # Otherwise we can continue with creating the rectangle
         return self.canvas.create_rectangle(
-            x+border_width/2,
-            y+border_width/2,
-            widt-border_width/2,
-            height-border_width/2,
+            x + border_width / 2,
+            y + border_width / 2,
+            widt - border_width / 2,
+            height - border_width / 2,
             fill=fill,
             width=border_width,
             outline=outline,
@@ -915,7 +913,7 @@ class _window_internal(threading.Thread):
         try:
             self.root.quit()
         except Exception as e:
-            print("exception" + e)
+            print(f"exception{e}")
         if self.closing_command is not None:
             self.closing_command()
 
@@ -923,10 +921,10 @@ class _window_internal(threading.Thread):
     def place(self, x=0, y=0):
         self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
         return self
-    
+
     # Wrapper for root.bind() method, in future, add global keypress handling
     def bind(self, key, command):
-        self.root.bind(key,command)
+        self.root.bind(key, command)
 
     # Main method
     def run(self):
@@ -953,7 +951,7 @@ class _window_internal(threading.Thread):
             try:
                 self.root.quit()
             except Exception as e:
-                print("exception" + e)
+                print(f"exception{e}")
             if self.closing_command is not None:
                 self.closing_command()
 
@@ -999,7 +997,7 @@ def Window(
     """
     # Create window
 
-    if type(resizable) == bool:
+    if type(resizable) is bool:
         resizable = (resizable, resizable)
 
     canvas = _window_internal(
@@ -1010,7 +1008,7 @@ def Window(
     canvas.start()
 
     # Wait for window to be created, as it == in a separate thread and not blocking this thread
-    while canvas.root == None:
+    while canvas.root is None:
         sleep(0.1)
 
     # Return the window
@@ -1027,7 +1025,7 @@ def __main__():
         height=500,
     ).place(0, 0)
 
-    slider = Slider(
+    Slider(
         canvas,
         height=50,
         width=20,
