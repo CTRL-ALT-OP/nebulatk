@@ -12,10 +12,10 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     width, height = image.size
 
     bounds = {}
-    open = None
+    start_pixel = None
 
     # Execute function twice if no bounds are found the first pass
-    while bounds == {} and tolerance >= 0:
+    while not bounds and tolerance >= 0:
         # Iterate over the pixels
         for y in range(height):
             for x in range(width):
@@ -23,23 +23,22 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
 
                 # If the pixel is opaque enough to be over the tolerance threshold, and no line start was found, it is the start of a line
                 if cpixel[3] >= round(tolerance * 255):
-                    if open == None:
-                        open = x
+                    if start_pixel is None:
+                        start_pixel = x
 
                 # If the pixel doesn't hit the tolerance threshold, the line ends with the previous pixel
-                else:
+                elif start_pixel is not None:
                     # Add line to the bounds
-                    if open is not None:
-                        if y in bounds:
-                            bounds[y].append([open, x - 1])
-                        else:
-                            bounds[y] = [[open, x - 1]]
-                        open = None
+                    if y in bounds:
+                        bounds[y].append([open, x - 1])
+                    else:
+                        bounds[y] = [[open, x - 1]]
+                    start_pixel = None
 
             # If no end to the line was found, the line must continue to the end
-            if open is not None:
-                bounds[y] = [[open, x]]
-                open = None
+            if start_pixel is not None:
+                bounds[y] = [[start_pixel, x]]
+                start_pixel = None
 
         # In case no bounds were found, reduce tolerance
         tolerance -= tolerance
@@ -58,7 +57,7 @@ def remove_bounds(item, mode="box"):
     if mode == "box":
         for i in range(item.y, item.y + item.height):
             if i in item.master.bounds:
-                for j in range(0, len(item.master.bounds[i])):
+                for j in range(len(item.master.bounds[i])):
                     if item.master.bounds[i][j][0] == item:
                         item.master.bounds[i].pop(j)
                         break
@@ -67,7 +66,7 @@ def remove_bounds(item, mode="box"):
         for i in item.bounds.keys():
             for bound in item.bounds[i]:
                 if i in item.master.bounds:
-                    for j in range(0, len(item.master.bounds[i])):
+                    for j in range(len(item.master.bounds[i])):
                         if (
                             item.master.bounds[i][j][0] == item
                             and item.master.bounds[i][j][1] == bound[0] + item.x
@@ -87,9 +86,9 @@ def update_bounds(item, x, y, mode="box"):
     """
 
     # Set x and y in case none is provided
-    if x == None:
+    if x is None:
         x = item.x
-    if y == None:
+    if y is None:
         y = item.y
     # Remove old bounds
     remove_bounds(item, mode)
@@ -99,7 +98,7 @@ def update_bounds(item, x, y, mode="box"):
         for i in range(y, y + item.height):
             if i in item.master.bounds:
                 if item.master.bounds[i] != []:
-                    for j in range(0, len(item.master.bounds[i])):
+                    for j in range(len(item.master.bounds[i])):
                         if item.master.bounds[i][j][0].object < item.object:
                             item.master.bounds[i].insert(j, [item, x, x + item.width])
                             break
@@ -123,7 +122,7 @@ def update_bounds(item, x, y, mode="box"):
                     if item.master.bounds[i] != []:
 
                         # If it isn't empty, iterate over all existing objects in the master bounds until we find an object that the bounds should be behind
-                        for j in range(0, len(item.master.bounds[i + y])):
+                        for j in range(len(item.master.bounds[i + y])):
                             if item.master.bounds[i + y][j][0].object < item.object:
                                 item.master.bounds[i + y].insert(
                                     j, [item, bound[0] + x, bound[1] + x]

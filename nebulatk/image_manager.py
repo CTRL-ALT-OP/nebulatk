@@ -25,7 +25,13 @@ def load_image(_object, image, return_both=False):
 
         # Resize image if size isn't specified
         if _object.width != 0 and _object.height != 0:
-            image = image.resize((_object.width-(_object.border_width*2), _object.height-(_object.border_width*2)), pil.NEAREST)
+            image = image.resize(
+                (
+                    _object.width - (_object.border_width * 2),
+                    _object.height - (_object.border_width * 2),
+                ),
+                pil.NEAREST,
+            )
 
         # Convert image for tkinter
         image_converted = piltk.PhotoImage(image, master=_object.master.root)
@@ -64,7 +70,7 @@ def load_image_generic(image, return_both=False):
     return image_converted
 
 
-def create_image(fill, width, height, border, border_width):
+def create_image(fill, width, height, border, border_width, master):
     """Generate a new TkImage image
 
     Args:
@@ -88,5 +94,5 @@ def create_image(fill, width, height, border, border_width):
     image1.rectangle(shape, fill=fill, outline=border, width=border_width)
 
     # Convert image
-    image = piltk.PhotoImage(image)
+    image = piltk.PhotoImage(image, master=master)
     return image

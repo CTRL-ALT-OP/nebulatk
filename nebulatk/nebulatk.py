@@ -1,4 +1,5 @@
 # Import tkinter and filedialog
+import random
 import sys
 import threading
 import tkinter as tk
@@ -647,6 +648,9 @@ class Entry(_widget):
             self.text_object, text=self.entire_text[self.end - max_length : self.end]
         )
 
+    def get(self):
+        return self.entire_text
+
 
 class Frame(_widget):
 
@@ -703,6 +707,7 @@ class _window_internal(threading.Thread):
         canvas_height="default",
         closing_command=None,
         resizable=(True, True),
+        override=False,
     ):
         # Initialize the thread
         super().__init__()
@@ -725,6 +730,7 @@ class _window_internal(threading.Thread):
         self.width = int(width)
         self.height = int(height)
         self.resizable = resizable
+        self.override = override
 
         self.title = title
 
@@ -863,7 +869,7 @@ class _window_internal(threading.Thread):
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
         if fill is not None and len(fill) > 7:
             bg_image = image_manager.create_image(
-                fill, widt, height, outline, border_width
+                fill, widt, height, outline, border_width, self.root
             )
             self.images.append(bg_image)
             return self.create_image(x, y, bg_image, state=state)
@@ -911,11 +917,15 @@ class _window_internal(threading.Thread):
     def close(self):
         self.running = False
         try:
-            self.root.quit()
+            self.root.update()
+            self.join()
         except Exception as e:
-            print(f"exception{e}")
+            print(e)
         if self.closing_command is not None:
             self.closing_command()
+
+    def destroy(self):
+        self.close()
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
@@ -945,6 +955,8 @@ class _window_internal(threading.Thread):
         self.root.title(self.title)
 
         self.root.resizable(self.resizable[0], self.resizable[1])
+
+        self.root.overrideredirect(self.override)
 
         def close():
             self.running = False
@@ -981,6 +993,7 @@ def Window(
     canvas_height="default",
     closing_command=sys.exit,
     resizable=(True, True),
+    override=False,
 ):
     """Window constructor
 
@@ -1001,7 +1014,14 @@ def Window(
         resizable = (resizable, resizable)
 
     canvas = _window_internal(
-        width, height, title, canvas_width, canvas_height, closing_command, resizable
+        width,
+        height,
+        title,
+        canvas_width,
+        canvas_height,
+        closing_command,
+        resizable,
+        override,
     )
 
     # Start window thread
@@ -1015,51 +1035,127 @@ def Window(
     return canvas
 
 
+fonts = [
+    "Algerian",
+    "Helvetica",
+    "Times New Roman",
+    "Blackadder ITC",
+    "Bradley Hand ITC",
+    "Castellar",
+    "Cooper Black",
+    "Edwardian Script ITC",
+    "Forte",
+    "Comic Sans MS",
+]
+
+colors = [
+    "FD3A4A",
+    "FD3A4A",
+    "A7F432",
+    "5DADEC",
+    "BFAFB2",
+    "FF5470",
+    "FFDB00",
+    "FF7A00",
+]
+
+labels = []
+
+
+def add_text():
+    global entry_text
+    global display
+    global labels
+
+    font_size = random.randint(20, 40)
+    lbl = (
+        Label(
+            display,
+            text=entry_text.get(),
+            font=(
+                fonts[random.randint(0, len(fonts) - 1)],
+                font_size,
+            ),
+            fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
+        )
+        .place()
+        .hide()
+    )
+    invalid_location = True
+    iterations = 0
+    while invalid_location:
+        position = (random.randint(0, 1920), random.randint(0, 1080))
+        label_new = [
+            position[0],  # x
+            position[1],  # y
+            lbl.width + position[0],  # x2
+            lbl.height + position[1],  # y2
+        ]
+        print(labels, label_new)
+        invalid_location = False
+        if label_new[2] > 1920 or label_new[3] > 1080:
+            invalid_location = True
+        else:
+            for label in labels:
+                if not (
+                    (
+                        label_new[2] < label[0]
+                        or label_new[0] > label[2]
+                        or label_new[1] > label[3]
+                        or label_new[3] < label[1]
+                    )
+                ):
+                    invalid_location = True
+                    break
+        iterations += 1
+        if iterations >= 100:
+            lbl.destroy()
+            font_size -= 5
+            lbl = (
+                Label(
+                    display,
+                    text=entry_text.get(),
+                    font=(fonts[random.randint(0, len(fonts) - 1)], font_size),
+                    fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
+                )
+                .place()
+                .hide()
+            )
+            iterations = 0
+
+    lbl.place(position[0], position[1]).show()
+    labels.append(label_new)
+
+
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window()
-    Frame(
-        canvas,
-        image="Images/background.png",
-        width=500,
-        height=500,
-    ).place(0, 0)
+    global display
+    display = Window(1920, 1080, resizable=False, override=True)  # .place(1920)
+    entry = Window(350, 50, resizable=False, closing_command=display.close)
 
-    Slider(
-        canvas,
-        height=50,
-        width=20,
-        fill=[67, 67, 67, 255],
-        border_width=5,
-    ).place(100, 60)
-
-    """Button(
-        canvas,
-        text="hillo",
-        fill=[255, 66, 66, 55],
-        image="Images/main_button_inactive.png",
-        active_image="Images/main_button_inactive2.png",
-        hover_image="Images/main_button_active.png",
-        hover_image_active="Images/main_button_active2.png",
-        mode="toggle",
-        command=lambda: slider.show(),
-        command_off=lambda: slider.hide(),
-    ).place(0, 0)"""
-
-    Entry(
-        canvas,
+    global entry_text
+    entry_text = Entry(
+        entry,
         text="sample entry widget",
         font=("Helvetica", 20),
         width=300,
         height=50,
-        justify="right",
+        justify="left",
         fill=[0, 100, 0, 50],
         border_width=1,
         text_color="cobaltgreen",
-    ).place(100, 0)
+    ).place(0, 0)
 
-    Frame(canvas, 30, 30, border="green", fill=[0, 255, 0, 50]).place(160, 470)
-    # FileDialog(canvas)
+    Button(
+        entry,
+        text="Enter",
+        width=50,
+        height=50,
+        fill=[0, 100, 0, 50],
+        command=add_text,
+    ).place(300, 0)
+
+    Frame(display, width=1920, height=1080, image="ex_imgs/background.jpg").place()
 
 
 if __name__ == "__main__":
