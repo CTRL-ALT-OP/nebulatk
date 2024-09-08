@@ -338,7 +338,7 @@ def update_positions(_object, x, y, avoid_slider=False):
 # ------------------------------------------------------------ PLACEMENT BEHAVIOURS ---------------------------------------------------------
 
 
-def place_bulk(_object):
+def place_bulk(_object, x, y):
     """Bulk place objects
 
     Args:
@@ -346,42 +346,42 @@ def place_bulk(_object):
     """
     # Only place background rectangles if there == a fill or border
     # Place slider_bg_object
+    state = "normal" if _object.visible else "hidden"
     if _object.slider_fill is not None or (
         _object.slider_border is not None and _object.slider_border_width != 0
     ):
         _object.slider_bg_object = _object.master.create_rectangle(
-            _object.x,
-            _object.y + _object.height / 2 - _object.slider_height / 2,
-            _object.x + _object.maximum + _object.width,
-            _object.y
-            + _object.height / 2
-            - _object.slider_height / 2
-            + _object.slider_height,
+            x,
+            y + _object.height / 2 - _object.slider_height / 2,
+            x + _object.maximum + _object.width,
+            y + _object.height / 2 - _object.slider_height / 2 + _object.slider_height,
             fill=_object.slider_fill,
             border_width=_object.slider_border_width,
             outline=_object.slider_border,
+            state=state,
         )
     # Place bg_object
     if _object.fill is not None or (
         _object.border is not None and _object.border_width != 0
     ):
         _object.bg_object = _object.master.create_rectangle(
-            _object.x,
-            _object.y,
-            _object.x + _object.width,
-            _object.y + _object.height,
+            x,
+            y,
+            x + _object.width,
+            y + _object.height,
             fill=_object.fill,
             border_width=_object.border_width,
             outline=_object.border,
+            state=state,
         )
 
     # Place bg_object_active
     if _object.active_fill is not None:
         _object.bg_object_active = _object.master.create_rectangle(
-            _object.x,
-            _object.y,
-            _object.x + _object.width,
-            _object.y + _object.height,
+            x,
+            y,
+            x + _object.width,
+            y + _object.height,
             fill=_object.active_fill,
             border_width=_object.border_width,
             outline=_object.border,
@@ -393,7 +393,7 @@ def place_bulk(_object):
         if check(_object, img):
             state = "hidden"
             img_object = img.split("_")[0] + "_object"
-            if img == "image":
+            if img == "image" and _object.visible:
                 state = "normal"
             if img == "hover_image_active":
                 img_object += "_active"
@@ -402,8 +402,8 @@ def place_bulk(_object):
                 _object,
                 img_object,
                 _object.master.create_image(
-                    _object.x + _object.border_width,
-                    _object.y + _object.border_width,
+                    x + _object.border_width,
+                    y + _object.border_width,
                     getattr(_object, img),
                     state=state,
                 ),
@@ -411,25 +411,26 @@ def place_bulk(_object):
 
     # Place text objects
     if _object.text != "":
-        generate_text(_object)
+        generate_text(_object, x, y)
 
 
-def generate_text(_object):
+def generate_text(_object, x, y):
+    state = "normal" if _object.visible else "hidden"
     # Set x offset and anchor based on justify
     if _object.justify == "center":
-        local_x = _object.x + (_object.width / 2)
+        local_x = x + (_object.width / 2)
         anchor = "center"
 
     elif _object.justify == "left":
-        local_x = _object.x
+        local_x = x
         anchor = "w"
 
     elif _object.justify == "right":
-        local_x = _object.x + _object.width
+        local_x = x + _object.width
         anchor = "e"
 
     # Set y offset
-    local_y = _object.y + (_object.height / 2)
+    local_y = y + (_object.height / 2)
 
     _object.text_object = _object.master.create_text(
         local_x,
@@ -438,6 +439,7 @@ def generate_text(_object):
         font=_object.font,
         fill=_object.text_color,
         anchor=anchor,
+        state=state,
     )
     if _object.active_text_color is not None:
         _object.active_text_object = _object.master.create_text(

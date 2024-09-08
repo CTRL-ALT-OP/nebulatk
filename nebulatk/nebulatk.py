@@ -86,17 +86,16 @@ class _widget:
         """
         x = int(x)
         y = int(y)
-
         if self.bg_object is None and self.image_object is None:
-            standard_methods.place_bulk(self)
+            standard_methods.place_bulk(self, x, y)
             if self.bg_object is not None and self.bounds_type == "box":
                 self.object = self.bg_object
             elif self.image_object is not None:
                 self.object = self.image_object
             else:
                 self.object = self.text_object
-
-        standard_methods.update_positions(self, x, y)
+        else:
+            standard_methods.update_positions(self, x, y)
         bounds_manager.update_bounds(self, x, y, mode=self.bounds_type)
 
         self.x = x
@@ -1078,11 +1077,11 @@ def add_text():
             ),
             fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
         )
-        .place()
         .hide()
+        .place()
     )
-    invalid_location = True
     iterations = 0
+    invalid_location = True
     while invalid_location:
         position = (random.randint(0, 1920), random.randint(0, 1080))
         label_new = [
@@ -1091,19 +1090,16 @@ def add_text():
             lbl.width + position[0],  # x2
             lbl.height + position[1],  # y2
         ]
-        print(labels, label_new)
         invalid_location = False
         if label_new[2] > 1920 or label_new[3] > 1080:
             invalid_location = True
         else:
             for label in labels:
-                if not (
-                    (
-                        label_new[2] < label[0]
-                        or label_new[0] > label[2]
-                        or label_new[1] > label[3]
-                        or label_new[3] < label[1]
-                    )
+                if (
+                    label_new[2] >= label[0]
+                    and label_new[0] <= label[2]
+                    and label_new[1] <= label[3]
+                    and label_new[3] >= label[1]
                 ):
                     invalid_location = True
                     break
@@ -1118,8 +1114,8 @@ def add_text():
                     font=(fonts[random.randint(0, len(fonts) - 1)], font_size),
                     fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
                 )
-                .place()
                 .hide()
+                .place()
             )
             iterations = 0
 

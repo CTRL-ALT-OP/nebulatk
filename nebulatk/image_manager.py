@@ -1,7 +1,6 @@
 from PIL import Image as pil
 from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
-import tkinter as tk
 
 
 def load_image(_object, image, return_both=False):
@@ -37,10 +36,7 @@ def load_image(_object, image, return_both=False):
         image_converted = piltk.PhotoImage(image, master=_object.master.root)
 
     # Return both PhotoImage and PilImage objects if requested
-    if return_both:
-        return image_converted, image
-
-    return image_converted
+    return (image_converted, image) if return_both else image_converted
 
 
 def load_image_generic(image, return_both=False):
@@ -65,9 +61,7 @@ def load_image_generic(image, return_both=False):
         image_converted = piltk.PhotoImage(image)
 
     # Return both PhotoImage and PilImage objects if requested
-    if return_both:
-        return image_converted, image
-    return image_converted
+    return (image_converted, image) if return_both else image_converted
 
 
 def create_image(fill, width, height, border, border_width, master):
