@@ -1155,7 +1155,9 @@ def __main__():
         command=add_text,
     ).place(300, 0)
 
-    Frame(display, width=1920, height=1080, image="ex_imgs/background.jpg").place()
+    Frame(
+        display, width=1920, height=1080, image="examples/Images/background.jpg"
+    ).place()
 
 
 if __name__ == "__main__":
