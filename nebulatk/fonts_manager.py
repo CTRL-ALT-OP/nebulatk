@@ -1,12 +1,19 @@
 from tkinter import font as tkfont
 import math
-from ctypes import windll, byref, create_unicode_buffer
+
+try:
+    from ctypes import windll, byref, create_unicode_buffer
+except Exception as e:
+    print(e)
+    ctypes = False
 
 FR_PRIVATE = 0x10
 FR_NOT_ENUM = 0x20
 
 
 def loadfont(fontpath, private=True, enumerable=False):
+    if not ctypes:
+        return
     """Load a font into resources so that a process can use it
 
     Args:
@@ -20,16 +27,14 @@ def loadfont(fontpath, private=True, enumerable=False):
     Returns:
         bool: Success of loading specified font
     """
-    # Check that the font is a string
-    if isinstance(fontpath, str):
-        # Generate buffer and load the font resources
-        pathbuf = create_unicode_buffer(fontpath)
-        AddFontResourceEx = windll.gdi32.AddFontResourceExW
-    else:
+    if not isinstance(fontpath, str):
         raise TypeError("Fontpath must be of type str")
 
+    # Generate buffer and load the font resources
+    pathbuf = create_unicode_buffer(fontpath)
+    AddFontResourceEx = windll.gdi32.AddFontResourceExW
     # Generate flags
-    flags = (FR_PRIVATE if private else 0) | (FR_NOT_ENUM if not enumerable else 0)
+    flags = (FR_PRIVATE if private else 0) | (0 if enumerable else FR_NOT_ENUM)
 
     # Add fonts to resource, and return number of fonts added successfully
     numFontsAdded = AddFontResourceEx(byref(pathbuf), flags, 0)
@@ -203,13 +208,8 @@ ALPHA = [
     "z",
 ]
 
-# Append upper case symbols to ALPHA
-i = 0
 i_e = len(ALPHA)
-while i < i_e:
-    ALPHA.append(str.upper(ALPHA[i]))
-    i += 1
-
+ALPHA.extend(str.upper(ALPHA[i]) for i in range(i_e))
 NUMERIC = list("12345567890")
 SYMBOL = list("`~!@#$%^&*()_+-={}[]|\:\";',.></? ")
 ALPHANUMERIC = ALPHA + NUMERIC

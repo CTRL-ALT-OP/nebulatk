@@ -50,6 +50,11 @@ def load_initial(
     _object.root = root
     _object.master = root.master
 
+    if root != root.master:
+        root.children.append(_object)
+
+    _object.children = []
+
     # Set width and height, ensuring they are integers
     _object.width = int(width)
     _object.height = int(height)
@@ -108,12 +113,12 @@ def load_text(_object, text, font):
     """
     if text != "":
         # Generate font
-        if font == None:
+        if font is None:
             # Default font
             font = ("Helvetica", int(_object.width / len(text)))
 
         # If only font name is specified
-        if type(font) == str:
+        if type(font) is str:
             font = (font, int(_object.width / len(text)))
 
         # Get minimum size of widget
@@ -152,10 +157,7 @@ def load_bounds_type(_object, bounds_type, image=None):
     """
     # If the bounds type is the default, determine which default is required
     if bounds_type == "default":
-        if image is None:
-            bounds_type = "box"
-        else:
-            bounds_type = "non-standard"
+        bounds_type = "box" if image is None else "non-standard"
     _object.bounds_type = bounds_type
 
 
@@ -185,8 +187,8 @@ def load_bulk_images(_object, **kwargs):
 
         # New width and height is the image size
         _object.width, _object.height = pil_images["image"].size
-        _object.width += _object.border_width*2
-        _object.height += _object.border_width*2
+        _object.width += _object.border_width * 2
+        _object.height += _object.border_width * 2
 
 
 def load_all_colors(
@@ -212,25 +214,22 @@ def load_all_colors(
         slider_border (color, optional): Slider border color. Defaults to None.
     """
     # Generate default colors
-    if _object.image == None:
+    if _object.image is None:
         if fill == "default":
             fill = "white"
 
         if active_fill == "default":
-            if fill == None:
+            if fill is None:
                 active_fill = None
 
+            elif colors_manager.check_full_white_or_black(fill) == 1:
+                active_fill = colors_manager.darken(fill, 40)
             else:
-                # Make active_fill distinct from fill if it is default
-                if colors_manager.check_full_white_or_black(fill) == 1:
-                    active_fill = colors_manager.darken(fill, 40)
-                else:
-                    active_fill = colors_manager.brighten(fill, 40)
+                active_fill = colors_manager.brighten(fill, 40)
 
         if border == "default":
             border = "black"
 
-    # Set colors to none if default and an image is specified
     else:
         if fill == "default":
             fill = None

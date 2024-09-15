@@ -61,6 +61,16 @@ def clamp(number, minimum=0, maximum=0):
     return number
 
 
+def rel_position_to_abs(_object, x, y):
+    # Add up positions for relative offsets in parent tree
+    obj = _object
+    while obj.root != obj.master:
+        x += obj.root.x
+        y += obj.root.y
+        obj = obj.root
+    return x, y
+
+
 # ============================================================ FLOPS ======================================================================
 # NOTE: Flops hide all items of a type, and shows the selected item
 
@@ -72,11 +82,12 @@ def image_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
+    visible = "normal" if _object.visible else "hidden"
     if check(_object, val):
         for obj in IMAGE_OBJECTS:
             if hasattr(_object, obj):
                 if val == obj:
-                    _object.master.change_state(getattr(_object, obj), state="normal")
+                    _object.master.change_state(getattr(_object, obj), state=visible)
                 else:
                     _object.master.change_state(getattr(_object, obj), state="hidden")
 
@@ -88,10 +99,11 @@ def bg_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
+    visible = "normal" if _object.visible else "hidden"
     for obj in BG_OBJECTS:
         if check(_object, obj):
             if val == obj:
-                _object.master.change_state(getattr(_object, obj), state="normal")
+                _object.master.change_state(getattr(_object, obj), state=visible)
             else:
                 _object.master.change_state(getattr(_object, obj), state="hidden")
 
@@ -103,11 +115,12 @@ def text_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
+    visible = "normal" if _object.visible else "hidden"
     if hasattr(_object, val) and getattr(_object, val) is not None:
         for obj in TEXT_OBJECTS:
             if hasattr(_object, obj):
                 if val == obj:
-                    _object.master.change_state(getattr(_object, obj), state="normal")
+                    _object.master.change_state(getattr(_object, obj), state=visible)
                 else:
                     _object.master.change_state(getattr(_object, obj), state="hidden")
 
@@ -129,7 +142,7 @@ def flop_on(_object):
     Args:
         _object (nebulatk.Widget): widget
     """
-    _object.visible = True
+    visible = "normal" if _object.visible else "hidden"
     if _object.state:
         if _object.hovering:
             image_flop(_object, "hover_object_active")
@@ -139,22 +152,18 @@ def flop_on(_object):
         image_flop(_object, "hover_object")
     else:
         image_flop(_object, "image_object")
-    if _object.bg_object_active is not None:
-        if _object.state:
-            bg_flop(_object, "bg_object_active")
+    if _object.bg_object_active is not None and _object.state:
+        bg_flop(_object, "bg_object_active")
 
-        else:
-            bg_flop(_object, "bg_object")
+    else:
+        bg_flop(_object, "bg_object")
 
-    if _object.active_text_object is not None:
-        if _object.state:
-            text_flop(_object, "active_text_object")
+    if _object.active_text_object is not None and _object.state:
+        text_flop(_object, "active_text_object")
+    else:
+        text_flop(_object, "text_object")
 
-        else:
-            text_flop(_object, "text_object")
-
-    _object.master.change_state(_object.text_object, "normal")
-    _object.master.change_state(_object.slider_bg_object, "normal")
+    _object.master.change_state(_object.slider_bg_object, visible)
 
 
 # ============================================================ STANDARD WIDGET MANAGMENT METHODS ==========================================
@@ -315,8 +324,9 @@ def _update_position(_object, item, x, y):
         x (int): x position
         y (int): y position
     """
+    old_x, old_y = rel_position_to_abs(_object, _object.x, _object.y)
     if check(_object, item):
-        _object.master.move(getattr(_object, item), x - _object.x, y - _object.y)
+        _object.master.move(getattr(_object, item), x - old_x, y - old_y)
 
 
 def update_positions(_object, x, y, avoid_slider=False):
@@ -328,6 +338,8 @@ def update_positions(_object, x, y, avoid_slider=False):
         y (int): y position
         avoid_slider (bool, optional): Request to avoid touching the slider background objects. Defaults to False.
     """
+    x, y = rel_position_to_abs(_object, x, y)
+
     for obj in ALL_OBJECTS:
         if obj == "slider_bg_object" and avoid_slider:
             continue
@@ -344,6 +356,7 @@ def place_bulk(_object, x, y):
     Args:
         _object (nebulatk.Widget): widget
     """
+    x, y = rel_position_to_abs(_object, x, y)
     # Only place background rectangles if there == a fill or border
     # Place slider_bg_object
     state = "normal" if _object.visible else "hidden"

@@ -54,9 +54,16 @@ class _widget:
     def change_active(self):
         pass
 
-    def hide(self):
+    def _update_children(self, children=None, command="update"):
+        if children is None:
+            children = self.children
+        if children != []:
+            for child in children:
+                getattr(child, command)()
+                self._update_children(child.children)
+
+    def _hide(self):
         """Hide the widget"""
-        self.visible = False
 
         # Flop off hides all items that are part of this widget
         standard_methods.flop_off(self)
@@ -67,14 +74,24 @@ class _widget:
         # Always return self on methods the user might call. this allows for chaining like button = Button().place().hide()
         return self
 
-    def show(self):
+    def hide(self):
+        self.visible = False
+        self._hide()
+        self._update_children(command="_hide")
+
+    def _show(self):
         """Shows the widget"""
-        # Show makes all items that are part of this widget v==ible
+        # Show makes all items that are part of this widget visible
         standard_methods.flop_on(self)
 
         # Add this widget to bounds
         bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
         return self
+
+    def show(self):
+        self.visible = True
+        self._show()
+        self._update_children(command="_show")
 
     # Default place behavior
     def place(self, x=0, y=0):
@@ -84,6 +101,8 @@ class _widget:
             x (int, optional): x position. Defaults to 0.
             y (int, optional): y position. Defaults to 0.
         """
+        self.abs_x = x
+        self.abs_y = y
         x = int(x)
         y = int(y)
         if self.bg_object is None and self.image_object is None:
@@ -100,6 +119,8 @@ class _widget:
 
         self.x = x
         self.y = y
+
+        self._update_children()
 
         if hasattr(self, "original_x"):
             self.original_x = x
@@ -1061,12 +1082,26 @@ colors = [
 labels = []
 
 
+# tween
+def animate(widget, target_x, target_y):
+    while True:
+        sleep(0.01)
+        updated_pos = [target_x, target_y]
+        if widget.x != target_x:
+            updated_pos[0] = widget.abs_x + ((target_x - widget.x) / 10)
+        if widget.y != target_y:
+            updated_pos[1] = widget.abs_y + ((target_y - widget.y) / 10)
+        if updated_pos == [target_x, target_y]:
+            break
+        widget.place(updated_pos[0], updated_pos[1])
+
+
 def add_text():
     global entry_text
     global display
     global labels
 
-    font_size = random.randint(20, 40)
+    font_size = random.randint(20, 30)
     lbl = (
         Label(
             display,
@@ -1119,14 +1154,15 @@ def add_text():
             )
             iterations = 0
 
-    lbl.place(position[0], position[1]).show()
+    lbl.place(random.randint(0, 1920), 1920 + lbl.height).show()
     labels.append(label_new)
+    threading.Thread(target=animate, args=(lbl, position[0], position[1])).start()
 
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
     global display
-    display = Window(1920, 1080, resizable=False, override=True)  # .place(1920)
+    display = Window(1920, 1080, resizable=False, override=True).place(1920)
     entry = Window(350, 50, resizable=False, closing_command=display.close)
 
     global entry_text
@@ -1154,6 +1190,31 @@ def __main__():
     Frame(
         display, width=1920, height=1080, image="examples/Images/background.jpg"
     ).place()
+
+
+def main2():
+    window = Window()
+
+    frame = Frame(window, width=100, height=100, border_width=4).place(50, 25)
+
+    btn = Slider(frame, height=30, width=50).place()
+
+    sleep(2)
+    btn.place(40, 0)
+    sleep(2)
+    frame.place(20, 20)
+    sleep(1)
+    frame.hide()
+    sleep(1)
+    frame.show()
+    sleep(1)
+    btn.hide()
+    sleep(1)
+    frame.hide()
+    sleep(1)
+    frame.show()
+    sleep(1)
+    btn.show()
 
 
 if __name__ == "__main__":

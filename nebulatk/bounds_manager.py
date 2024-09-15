@@ -1,3 +1,6 @@
+import standard_methods
+
+
 def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     """Generates bounds for an image with arbitrary shapes and transparency
 
@@ -50,12 +53,13 @@ def remove_bounds(item, mode="box"):
 
     Args:
         item (nebulatk.Widget): widget
-        x (int): x
-        y (int): y
         mode (str, optional): Mode to remove bounds with. Defaults to "box".
     """
+
+    x, y = standard_methods.rel_position_to_abs(item, item.x, item.y)
+
     if mode == "box":
-        for i in range(item.y, item.y + item.height):
+        for i in range(y, y + item.height):
             if i in item.master.bounds:
                 for j in range(len(item.master.bounds[i])):
                     if item.master.bounds[i][j][0] == item:
@@ -69,7 +73,7 @@ def remove_bounds(item, mode="box"):
                     for j in range(len(item.master.bounds[i])):
                         if (
                             item.master.bounds[i][j][0] == item
-                            and item.master.bounds[i][j][1] == bound[0] + item.x
+                            and item.master.bounds[i][j][1] == bound[0] + x
                         ):
                             item.master.bounds[i].pop(j)
                             break
@@ -90,6 +94,8 @@ def update_bounds(item, x, y, mode="box"):
         x = item.x
     if y is None:
         y = item.y
+
+    x, y = standard_methods.rel_position_to_abs(item, x, y)
     # Remove old bounds
     remove_bounds(item, mode)
 
