@@ -6,6 +6,7 @@ import tkinter as tk
 
 # Import python standard packages
 from time import sleep
+import os
 from tkinter import filedialog as tkfile_dialog
 
 # Importing from another file works differently than if running this file directly for some reason.
@@ -1125,8 +1126,10 @@ def add_text():
     global canvas2
     global x
     global y
+    global last_random
+    print(x, y)
 
-    font_size = random.randint(140, 160)
+    font_size = random.randint(80, 100)
 
     font = (
         fonts[random.randint(0, len(fonts) - 1)],
@@ -1148,7 +1151,8 @@ def add_text():
     invalid_location = True
     position = (x, y)
     while invalid_location:
-        # position = (random.randint(0, 192) * 10, random.randint(0, 108) * 10)
+        if last_random:
+            position = (random.randint(0, 192) * 10, random.randint(0, 108) * 10)
         label_new = [
             position[0],  # x
             position[1],  # y
@@ -1210,9 +1214,23 @@ def add_text():
     labels.append(label_new)
     threading.Thread(target=animate, args=(lbl, position[0], position[1])).start()
 
+    x = random.randint(0, 192) * 10
+    y = random.randint(0, 108) * 10
+    last_random = True
+
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
+    for file in os.listdir("examples\\Fonts"):
+        print(file)
+        fonts_manager.loadfont(file)
+    global x
+    global y
+    global last_random
+    last_random = True
+    x = random.randint(0, 192) * 10
+    y = random.randint(0, 108) * 10
+
     global display
     display = Window(1920, 1080, resizable=False, override=True)  # .place(1920)
     entry = Window(384, 50 + 216, resizable=False, closing_command=display.close)
@@ -1242,7 +1260,9 @@ def __main__():
     def clicked(event):
         global x
         global y
+        global last_random
         if event.y > 50:
+            last_random = False
             x, y = event.x * 5, (event.y - 50) * 5
 
     entry.bind("<Button-1>", clicked)

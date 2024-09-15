@@ -1,18 +1,19 @@
 from tkinter import font as tkfont
 import math
 
+ctypes_available = True
 try:
     from ctypes import windll, byref, create_unicode_buffer
 except Exception as e:
     print(e)
-    ctypes = False
+    ctypes_available = False
 
 FR_PRIVATE = 0x10
 FR_NOT_ENUM = 0x20
 
 
 def loadfont(fontpath, private=True, enumerable=False):
-    if not ctypes:
+    if not ctypes_available:
         return
     """Load a font into resources so that a process can use it
 
