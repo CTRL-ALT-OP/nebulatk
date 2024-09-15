@@ -3,11 +3,13 @@ try:
     from . import fonts_manager
     from . import bounds_manager
     from . import colors_manager
+    from . import standard_methods
 except ImportError:
     import image_manager
     import fonts_manager
     import bounds_manager
     import colors_manager
+    import standard_methods
 
 # ============================================================ INITIALIZATION METHODS ======================================================================
 
@@ -60,6 +62,7 @@ def load_initial(
     _object.height = int(height)
     _object.slider_height = int(slider_height)
 
+    _object.angle = 0
     # Set slider minimum and maximum values, ensuring they are integers
     _object.minimum = int(minimum)
     _object.maximum = int(maximum)
@@ -170,10 +173,41 @@ def load_bulk_images(_object, **kwargs):
     """
     pil_images = {}
 
-    for arg in kwargs:
+    for arg, value in kwargs.items():
+        if value is None:
+            setattr(_object, arg, None)
+            continue
         # Load image
-        img, pil_img = image_manager.load_image(_object, kwargs[arg], True)
+        if type(kwargs[arg]) is str:
+            img, pil_img = image_manager.load_image(_object, value, True)
+        else:
+            _, pil_img = image_manager.load_image(_object, value[0], True)
+            pil_img = pil_img.rotate(value[2], expand=True)
+            pil_img = pil_img.convert("RGBA")
+            data = pil_img.getdata()
 
+            if len(value) < 4:
+                new_data = [
+                    (
+                        *data[i][:3],
+                        standard_methods.clamp(data[i][3] - value[1], 0, 255),
+                    )
+                    for i in range(len(data) - 1)
+                ]
+            else:
+                new_data = [
+                    (
+                        *value[3],
+                        standard_methods.clamp(data[i][3] - value[1], 0, 255),
+                    )
+                    for i in range(len(data) - 1)
+                ]
+            pil_img.putdata(new_data)
+            """
+            im2 = pil_img.copy()
+            im2.putalpha(kwargs[arg][1])
+            pil_img.paste(im2, pil_img)"""
+            img = image_manager.convert_image(_object, pil_img)
         # Load it into the widget
         setattr(_object, arg, img)
         pil_images[arg] = pil_img

@@ -3,6 +3,10 @@ from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
 
+def convert_image(_object, image):
+    return piltk.PhotoImage(image, master=_object.master.root)
+
+
 def load_image(_object, image, return_both=False):
     """Load an image with PIL
 
@@ -33,13 +37,13 @@ def load_image(_object, image, return_both=False):
             )
 
         # Convert image for tkinter
-        image_converted = piltk.PhotoImage(image, master=_object.master.root)
+        image_converted = convert_image(_object, image)
 
     # Return both PhotoImage and PilImage objects if requested
     return (image_converted, image) if return_both else image_converted
 
 
-def load_image_generic(image, return_both=False):
+def load_image_generic(window, image, return_both=False):
     """Alternative to load_image without resizing. Does not require a parent widget.
 
     Args:
@@ -58,7 +62,7 @@ def load_image_generic(image, return_both=False):
         image = pil.open(image)
 
         # Convert image for tkinter
-        image_converted = piltk.PhotoImage(image)
+        image_converted = convert_image(image, window)
 
     # Return both PhotoImage and PilImage objects if requested
     return (image_converted, image) if return_both else image_converted
@@ -88,5 +92,5 @@ def create_image(fill, width, height, border, border_width, master):
     image1.rectangle(shape, fill=fill, outline=border, width=border_width)
 
     # Convert image
-    image = piltk.PhotoImage(image, master=master)
+    image = convert_image(master, image)
     return image

@@ -78,6 +78,7 @@ class _widget:
         self.visible = False
         self._hide()
         self._update_children(command="_hide")
+        return self
 
     def _show(self):
         """Shows the widget"""
@@ -92,6 +93,7 @@ class _widget:
         self.visible = True
         self._show()
         self._update_children(command="_show")
+        return self
 
     # Default place behavior
     def place(self, x=0, y=0):
@@ -541,6 +543,7 @@ class Label(_widget):
         border_width=0,
         image=None,
         bounds_type="default",
+        angle=0,
     ):
         """_summary_
 
@@ -582,6 +585,8 @@ class Label(_widget):
 
         # Convert all of our colors to hexadecimal
         initialize.convert_all_colors(self)
+
+        self.angle = angle
 
 
 class Entry(_widget):
@@ -646,16 +651,16 @@ class Entry(_widget):
         self.active = True
 
     def typed(self, character):
-        # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the d==played slice of self.entire_text
+        # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the displayed slice of self.entire_text
         # Backspace character
         if character == "\x08":
             self.entire_text = self.entire_text[:-1]
 
-        # If the character == a v==ible character
+        # If the character is a visible character
         elif character in fonts_manager.ALPHANUMERIC_PLUS:
             self.entire_text = self.entire_text + character
 
-        # Move end of d==play to the end of the text
+        # Move end of display to the end of the text
         self.end = len(self.entire_text)
 
         # Get maximum length of characters we can fit in the widget
@@ -663,10 +668,14 @@ class Entry(_widget):
             self.master, self.entire_text, self.font, self.width, self.end
         )
 
-        # Configure d==play text to be the slice of text that we can fit in the widget
-        self.master.configure(
-            self.text_object, text=self.entire_text[self.end - max_length : self.end]
-        )
+        # Configure display text to be the slice of text that we can fit in the widget
+        if self.text_object is not None:
+            self.configure(
+                text=self.entire_text[self.end - max_length : self.end],
+            )
+        else:
+            self.text = self.entire_text[self.end - max_length : self.end]
+            self.update()
 
     def get(self):
         return self.entire_text
@@ -889,7 +898,7 @@ class _window_internal(threading.Thread):
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
         if fill is not None and len(fill) > 7:
             bg_image = image_manager.create_image(
-                fill, widt, height, outline, border_width, self.root
+                fill, widt, height, outline, border_width, self
             )
             self.images.append(bg_image)
             return self.create_image(x, y, bg_image, state=state)
@@ -908,10 +917,17 @@ class _window_internal(threading.Thread):
 
     # Wrapper for canvas.create_text method
     def create_text(
-        self, x, y, text, font, fill="black", anchor="center", state="normal"
+        self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
         return self.canvas.create_text(
-            x, y, text=text, font=font, fill=fill, anchor=anchor, state=state
+            x,
+            y,
+            text=text,
+            font=font,
+            fill=fill,
+            anchor=anchor,
+            state=state,
+            angle=angle,
         )
 
     # Wrapper for canvas.move method
@@ -1057,8 +1073,6 @@ def Window(
 
 fonts = [
     "Algerian",
-    "Helvetica",
-    "Times New Roman",
     "Blackadder ITC",
     "Bradley Hand ITC",
     "Castellar",
@@ -1066,6 +1080,8 @@ fonts = [
     "Edwardian Script ITC",
     "Forte",
     "Comic Sans MS",
+    "Bauhaus 93",
+    "Harlow Solid Italic",
 ]
 
 colors = [
@@ -1077,7 +1093,13 @@ colors = [
     "FF5470",
     "FFDB00",
     "FF7A00",
+    "#45ba52",
+    "#2a89d5",
+    "#5c21de",
+    "#d14d2e",
 ]
+
+images = [f"examples\\Images\\cloud{i}.png" for i in range(1, 5)]
 
 labels = []
 
@@ -1100,30 +1122,38 @@ def add_text():
     global entry_text
     global display
     global labels
+    global canvas2
+    global x
+    global y
 
-    font_size = random.randint(20, 30)
-    lbl = (
-        Label(
-            display,
-            text=entry_text.get(),
-            font=(
-                fonts[random.randint(0, len(fonts) - 1)],
-                font_size,
-            ),
-            fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
-        )
-        .hide()
-        .place()
+    font_size = random.randint(140, 160)
+
+    font = (
+        fonts[random.randint(0, len(fonts) - 1)],
+        font_size,
     )
+
+    width, height = fonts_manager.get_min_button_size(
+        entry_text.master, font=font, text=entry_text.get()
+    )
+    if width / height < 820 / 500:
+        width = (820 / 500) * height * 1.5
+        height = height * 1.5
+    else:
+        width = width * 1.5
+        height = (500 / 820) * width * 1.5
+    image = images[random.randint(0, len(images) - 1)]
+
     iterations = 0
     invalid_location = True
+    position = (x, y)
     while invalid_location:
-        position = (random.randint(0, 1920), random.randint(0, 1080))
+        # position = (random.randint(0, 192) * 10, random.randint(0, 108) * 10)
         label_new = [
             position[0],  # x
             position[1],  # y
-            lbl.width + position[0],  # x2
-            lbl.height + position[1],  # y2
+            width + position[0],  # x2
+            height + position[1],  # y2
         ]
         invalid_location = False
         if label_new[2] > 1920 or label_new[3] > 1080:
@@ -1140,21 +1170,43 @@ def add_text():
                     break
         iterations += 1
         if iterations >= 100:
-            lbl.destroy()
             font_size -= 5
-            lbl = (
-                Label(
-                    display,
-                    text=entry_text.get(),
-                    font=(fonts[random.randint(0, len(fonts) - 1)], font_size),
-                    fill=f"{colors[random.randint(0, len(colors) - 1)]}30",
-                )
-                .hide()
-                .place()
+            font = (
+                font[0],
+                font_size,
             )
+            width, height = fonts_manager.get_min_button_size(
+                entry_text.master, font=font, text=entry_text.get()
+            )
+            if width / height < 820 / 500:
+                width = (820 / 500) * height * 1.5
+                height = height * 1.5
+            else:
+                width = width * 1.5
+                height = (500 / 820) * width * 1.5
             iterations = 0
-
-    lbl.place(random.randint(0, 1920), 1920 + lbl.height).show()
+    color = colors[random.randint(0, len(colors) - 1)]
+    angle = random.randint(-30, 30)
+    lbl = Label(
+        display,
+        text=entry_text.get(),
+        height=height,
+        width=width,
+        image=(image, 50, angle, (255, 255, 255)),
+        font=font,
+        text_color=color,
+        angle=angle,
+    )
+    lbl.place(random.randint(0, 1920), 1920 + lbl.height)
+    Label(
+        canvas2,
+        text=entry_text.get(),
+        height=height / 5,
+        width=width / 5,
+        # image=(image, 50, (255, 255, 255)),
+        font=(font[0], int(font[1] / 5)),
+        text_color=color,
+    ).place(position[0] / 5, position[1] / 5)
     labels.append(label_new)
     threading.Thread(target=animate, args=(lbl, position[0], position[1])).start()
 
@@ -1162,13 +1214,13 @@ def add_text():
 # NOTE: EXAMPLE WINDOW
 def __main__():
     global display
-    display = Window(1920, 1080, resizable=False, override=True).place(1920)
-    entry = Window(350, 50, resizable=False, closing_command=display.close)
+    display = Window(1920, 1080, resizable=False, override=True)  # .place(1920)
+    entry = Window(384, 50 + 216, resizable=False, closing_command=display.close)
 
     global entry_text
     entry_text = Entry(
         entry,
-        text="sample entry widget",
+        text="",
         font=("Helvetica", 20),
         width=300,
         height=50,
@@ -1187,34 +1239,22 @@ def __main__():
         command=add_text,
     ).place(300, 0)
 
+    def clicked(event):
+        global x
+        global y
+        if event.y > 50:
+            x, y = event.x * 5, (event.y - 50) * 5
+
+    entry.bind("<Button-1>", clicked)
+
     Frame(
-        display, width=1920, height=1080, image="examples/Images/background.jpg"
+        display, width=1920, height=1080, image="examples/Images/background2.jpg"
     ).place()
 
-
-def main2():
-    window = Window()
-
-    frame = Frame(window, width=100, height=100, border_width=4).place(50, 25)
-
-    btn = Slider(frame, height=30, width=50).place()
-
-    sleep(2)
-    btn.place(40, 0)
-    sleep(2)
-    frame.place(20, 20)
-    sleep(1)
-    frame.hide()
-    sleep(1)
-    frame.show()
-    sleep(1)
-    btn.hide()
-    sleep(1)
-    frame.hide()
-    sleep(1)
-    frame.show()
-    sleep(1)
-    btn.show()
+    global canvas2
+    canvas2 = Frame(
+        entry, width=384, height=216, image="examples/Images/background2.jpg"
+    ).place(0, 50)
 
 
 if __name__ == "__main__":

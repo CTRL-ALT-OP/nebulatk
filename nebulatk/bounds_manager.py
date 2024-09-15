@@ -33,9 +33,9 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
                 elif start_pixel is not None:
                     # Add line to the bounds
                     if y in bounds:
-                        bounds[y].append([open, x - 1])
+                        bounds[y].append([start_pixel, x - 1])
                     else:
-                        bounds[y] = [[open, x - 1]]
+                        bounds[y] = [[start_pixel, x - 1]]
                     start_pixel = None
 
             # If no end to the line was found, the line must continue to the end

@@ -453,6 +453,7 @@ def generate_text(_object, x, y):
         fill=_object.text_color,
         anchor=anchor,
         state=state,
+        angle=_object.angle,
     )
     if _object.active_text_color is not None:
         _object.active_text_object = _object.master.create_text(
