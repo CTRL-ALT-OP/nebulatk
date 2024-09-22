@@ -1,4 +1,7 @@
-import standard_methods
+try:
+    from . import standard_methods
+except ImportError:
+    import standard_methods
 
 
 def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
