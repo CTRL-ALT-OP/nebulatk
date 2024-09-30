@@ -222,7 +222,7 @@ def hover_end(_object):
         _object (nebulatk.Widget): widget
     """
     if _object.visible:
-        if not _object.state:
+        if _object.state:
             image_flop(_object, "active_object")
         else:
             image_flop(_object, "image_object")

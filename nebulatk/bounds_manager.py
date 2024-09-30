@@ -3,6 +3,8 @@ try:
 except ImportError:
     import standard_methods
 
+from time import time
+
 
 def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     """Generates bounds for an image with arbitrary shapes and transparency
@@ -100,8 +102,10 @@ def update_bounds(item, x, y, mode="box"):
 
     x, y = standard_methods.rel_position_to_abs(item, x, y)
     # Remove old bounds
+    current = time()
     remove_bounds(item, mode)
-
+    print("removed bounds", time() - current)
+    current = time()
     if mode == "box":
         # Add in new bounds
         for i in range(y, y + item.height):
@@ -145,3 +149,4 @@ def update_bounds(item, x, y, mode="box"):
                         item.master.bounds[i] = [[item, bound[0] + x, bound[1] + x]]
                 else:
                     item.master.bounds[i] = [[item, bound[0] + x, bound[1] + x]]
+    print("added bounds", time() - current)
