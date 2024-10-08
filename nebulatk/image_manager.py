@@ -2,6 +2,55 @@ from PIL import Image as pil
 from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
+try:
+    from . import bounds_manager
+except ImportError:
+    import bounds_manager
+
+
+class Image:
+    def __init__(self, path, _object=None, image=None):
+        self.image = None
+        self.tk_images = {}
+        self.bounds = []
+
+        if path is not None:
+            # Open image
+            self.image = pil.open(path)
+
+            if _object is not None:
+                # Resize image if size isn't specified
+                if _object.width != 0 and _object.height != 0:
+                    self.resize(
+                        _object.width - (_object.border_width * 2),
+                        _object.height - (_object.border_width * 2),
+                    )
+
+                # Convert image for tkinter
+                self.tk_images[_object.master] = convert_image(_object, self.image)
+
+        elif image is not None:
+            self.image = image
+
+            if _object is not None:
+                self.tk_images[_object.master] = convert_image(_object, self.image)
+
+    def resize(self, width, height):
+        self.tk_images = {}
+        if width != 0 and height != 0:
+            self.image = self.image.resize(
+                (
+                    width,
+                    height,
+                ),
+                pil.NEAREST,
+            )
+
+    def tk_image(self, _object):
+        if _object.master not in self.tk_images:
+            self.tk_images[_object.master] = convert_image(_object, self.image)
+        return self.tk_images[_object.master]
+
 
 def convert_image(_object, image):
     return piltk.PhotoImage(image, master=_object.master.root)
@@ -92,5 +141,5 @@ def create_image(fill, width, height, border, border_width, master):
     image1.rectangle(shape, fill=fill, outline=border, width=border_width)
 
     # Convert image
-    image = convert_image(master, image)
+    image = Image(None, master, image)
     return image

@@ -150,7 +150,7 @@ def add_text():
 def __main__():
     for file in os.listdir("Fonts"):
         print(file)
-        ntk.fonts_manager.loadfont(file, private = False)
+        ntk.fonts_manager.loadfont(file, private=False)
     global x
     global y
     global last_random
@@ -194,9 +194,7 @@ def __main__():
 
     entry.bind("<Button-1>", clicked)
 
-    ntk.Frame(
-        display, width=1920, height=1080, image="Images/background2.jpg"
-    ).place()
+    ntk.Frame(display, width=1920, height=1080, image="Images/background2.jpg").place()
 
     global canvas2
     canvas2 = ntk.Frame(

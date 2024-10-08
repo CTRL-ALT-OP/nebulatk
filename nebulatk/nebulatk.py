@@ -7,41 +7,585 @@ import tkinter as tk
 from time import sleep
 from tkinter import filedialog as tkfile_dialog
 
+
 # Importing from another file works differently than if running this file directly for some reason.
 # Import all required modules from nebulatk
 try:
     from . import (
         bounds_manager,
         fonts_manager,
+        colors_manager,
         image_manager,
         initialize,
         standard_methods,
+        defaults,
     )
 except ImportError:
     import bounds_manager
     import fonts_manager
+    import colors_manager
     import image_manager
     import initialize
     import standard_methods
+    import defaults
+
+
+# Our implementation of tkinter's file_dialog.
+# This mostly just exists so that the user doesn't have to import nebulatk and tkinter
+def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
+    """Identical to tkinter.FileDialog
+
+    Args:
+        window (nebulatk.Window): Root window
+        initialdir (str, optional): Initial directory to open to. Defaults to None.
+        mode (str, optional): File open mode. Defaults to "r".
+        filetypes (list, optional): List of filetypes. Format like:
+            [
+                ("Name","*.ext"),
+                ("Name", ("*.ext", "*.ext2"))
+            ]
+            Defaults to [("All files", "*")].
+
+    Returns:
+        file: Open file
+    """
+    window.leave_window(None)
+    file = tkfile_dialog.askopenfile(
+        initialdir=initialdir,
+        mode=mode,
+        filetypes=filetypes,
+    )
+    window.leave_window(None)
+    return file
 
 
 # Initialize base methods for all widgets.
 # This is largely so we don't ever need to initialize methods that will never be used (e.g. hovered on a frame)
-class _widget:
+class _widget_properties:
+    def __synthesize_color(self, name, color, no_image=True):
+        if not no_image:
+            return colors_manager.Color(None)
+        if color == "default":
+            if hasattr(self.master.defaults, f"default_{name}"):
+                color = getattr(self.master.defaults, f"default_{name}")
+            else:
+                name = name.lstrip("active_hover_")
+                color = defaults._offset(self._colors[name], 40)
+        else:
+            color = colors_manager.Color(color)
+        return color
+
+    def __convert_image(self, image):
+        return image_manager.Image(image) if type(image) is str else image
+
+    @property
+    def root(self):
+        return self._root
+
+    @root.setter
+    def root(self, root):
+        if self._root is not None and self.root != self.root.master:
+            root.children.remove(self)
+
+        self._root = root
+        self.master = root.master
+        self.children = []
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def width(self):
+        return self._size[0]
+
+    @width.setter
+    def width(self, width):
+        self._size[0] = width
+
+        if self.initialized:
+            self._configure_size(self._size)
+
+    @property
+    def height(self):
+        return self._size[1]
+
+    @height.setter
+    def width(self, width):
+        self._size[1] = width
+
+        if self.initialized:
+            self._configure_size(self._size)
+
+    @property
+    def x(self):
+        return self._position[0]
+
+    @x.setter
+    def x(self, x):
+        self._position[0] = x
+
+        if self.initialized:
+            self._configure_position(self._position)
+
+    @property
+    def y(self):
+        return self._position[1]
+
+    @y.setter
+    def y(self, y):
+        self._position[1] = y
+
+        if self.initialized:
+            self._configure_position(self._position)
+
+    @property
+    def angle(self):
+        return self._angle
+
+    @angle.setter
+    def angle(self, value):
+        self._angle = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def text(self):
+        return self._text
+
+    @text.setter
+    def text(self, text):
+        self._text = text
+
+        if self.initialized:
+            self._configure_text(self._text)
+
+    @property
+    def font(self):
+        return self._font
+
+    @font.setter
+    def font(self, font):
+        if font == "default":
+            font = self.master.defaults.get_attribute("default_font").font
+        else:
+            font = fonts_manager.Font(font).font
+
+        if self.text not in ("", None):
+            min_width, min_height = fonts_manager.get_min_button_size(
+                self.master, font, self.text
+            )
+
+            # If the widget size is not specified, set it to the minimum size
+            if self._size[0] == 0:
+                self._size[0] = min_width
+            if self._size[1] == 0:
+                self._size[1] = min_height
+
+            # Check if the font size is the default font size
+            # If so, set it to the max font size possible for the widget size
+            if font[1] == -1:
+                font = (
+                    font[0],
+                    fonts_manager.get_max_font_size(
+                        self.master, font, self.width, self.height, self.text
+                    ),
+                )
+
+        self._font = font
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def justify(self):
+        return self._justify
+
+    @justify.setter
+    def justify(self, value):
+        self._justify = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def text_color(self):
+        return self._colors["text_color"].color
+
+    @text_color.setter
+    def text_color(self, value):
+        value = self.__synthesize_color("text_color", value, self._no_image)
+        self._colors["text_color"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def active_text_color(self):
+        return self._colors["active_text_color"].color
+
+    @active_text_color.setter
+    def active_text_color(self, value):
+        value = self.__synthesize_color("active_text_color", value, self._no_image)
+        self._colors["active_text_color"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def fill(self):
+        return self._colors["fill"].color
+
+    @fill.setter
+    def fill(self, value):
+        fill = self.__synthesize_color("fill", value, self._no_image)
+        self._colors["fill"] = fill
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def active_fill(self):
+        return self._colors["active_fill"].color
+
+    @active_fill.setter
+    def active_fill(self, value):
+        active_fill = self.__synthesize_color("active_fill", value, self._no_image)
+        self._colors["active_fill"] = active_fill
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def hover_fill(self):
+        return self._colors["hover_fill"].color
+
+    @hover_fill.setter
+    def hover_fill(self, value):
+        hover_fill = self.__synthesize_color("hover_fill", value, self._no_image)
+        self._colors["hover_fill"] = hover_fill
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def active_hover_fill(self):
+        return self._colors["active_hover_fill"].color
+
+    @active_hover_fill.setter
+    def active_hover_fill(self, value):
+        active_hover_fill = self.__synthesize_color(
+            "active_hover_fill", value, self._no_image
+        )
+        self._colors["active_hover_fill"] = active_hover_fill
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def border(self):
+        return self._colors["border"].color
+
+    @border.setter
+    def border(self, value):
+        border = self.__synthesize_color("border", value, self._no_image)
+        self._colors["border"] = border
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def border_width(self):
+        return self._border_width
+
+    @border_width.setter
+    def border_width(self, value):
+        if self.border is None:
+            value = 0
+        self._border_width = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def image(self):
+        return self._images["image"]
+
+    @image.setter
+    def image(self, value):
+        value = self.__convert_image(value)
+
+        self._images["image"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def active_image(self):
+        return self._images["active_image"]
+
+    @active_image.setter
+    def active_image(self, value):
+        value = self.__convert_image(value)
+
+        self._images["active_image"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def hover_image(self):
+        return self._images["hover_image"]
+
+    @hover_image.setter
+    def hover_image(self, value):
+        value = self.__convert_image(value)
+
+        self._images["hover_image"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def active_hover_image(self):
+        return self._images["active_hover_image"]
+
+    @active_hover_image.setter
+    def active_hover_image(self, value):
+        value = self.__convert_image(value)
+
+        self._images["active_hover_image"] = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def bounds_type(self):
+        return self._bounds_type
+
+    @bounds_type.setter
+    def bounds_type(self, value):
+        if value == "default":
+            value = "non-standard" if self._images["image"] is not None else "box"
+
+        if self._images["image"] is not None:
+            if value == "non-standard":
+                self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
+                    self._images["image"].image
+                )
+
+            # New width and height is the image size
+            size = self._images["image"].image.size
+            self._size = [
+                size[0] + self.border_width * 2,
+                size[1] + self.border_width * 2,
+            ]
+        if value == "custom":
+            value = "non-standard"
+
+        self._bounds_type = value
+
+        if self.initialized:
+            self.update()
+
+    @property
+    def bounds(self):
+        return self._bounds
+
+    @bounds.setter
+    def bounds(self, value):
+        self._bounds = value
+        self._bounds_type = "non-standard"
+
+        if self.initialized:
+            bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
+
+
+class _widget(_widget_properties):
+
+    def __init__(
+        self,
+        root=None,
+        # General Variables
+        width: int = 0,
+        height: int = 0,
+        # Text Variables
+        text: str = "",
+        font: fonts_manager.Font = None,
+        justify: str = "center",
+        text_color: colors_manager.Color = "default",
+        active_text_color: colors_manager.Color = None,
+        # Color Variables
+        fill: colors_manager.Color = "default",
+        active_fill: colors_manager.Color = "default",
+        hover_fill: colors_manager.Color = "default",
+        active_hover_fill: colors_manager.Color = "default",
+        # Border Variables
+        border: colors_manager.Color = "default",
+        border_width: int = 0,
+        # Image Variables
+        image: image_manager.Image = None,
+        active_image: image_manager.Image = None,
+        hover_image: image_manager.Image = None,
+        active_hover_image: image_manager.Image = None,
+        # Bound Variables
+        bounds_type: str = "default",
+        custom_bounds: list | tuple = None,
+        # Commands
+        command=None,
+        command_off=None,
+        # Trigger Variables
+        mode: str = "standard",
+        state: bool = False,
+    ):
+        self.__initialize_general(root, width, height)
+
+        self.__initialize_text(text, font, justify, text_color, active_text_color)
+
+        self.__initialize_colors(
+            fill, active_fill, hover_fill, active_hover_fill, image is None
+        )
+
+        self.__initialize_border(border, border_width)
+
+        self.__initialize_images(image, active_image, hover_image, active_hover_image)
+
+        self.__initialize_bounds(bounds_type, custom_bounds)
+
+        self.__initialize_commands(command, command_off)
+
+        self.__initialize_trigger(mode, state)
+
+        self.initialized = True
+
+    def __initialize_general(self, root, width, height):
+        self.initialized = False
+        self._no_image = True
+
+        self.bg_object = None
+        self.bg_object_active = None
+        self.bg_object_hover = None
+        self.bg_object_hover_active = None
+        self.image_object = None
+        self.active_object = None
+        self.hover_object = None
+        self.hover_object_active = None
+
+        self.text_object = None
+        self.active_text_object = None
+
+        self.visible = True
+
+        self._root = None
+        self.root = root
+
+        self._size = [width, height]
+
+        self._position = [0, 0]
+
+        self.angle = 0
+
+        self._colors = {}
+
+        self._images = {}
+
+    def __initialize_text(self, text, font, justify, text_color, active_text_color):
+        self.text = text
+        self._entire_text = text
+
+        self.font = font
+
+        self.justify = justify
+
+        self.text_color = text_color
+
+        self.active_text_color = active_text_color
+
+    def __initialize_colors(
+        self, fill, active_fill, hover_fill, active_hover_fill, no_image
+    ):
+        self._no_image = no_image
+
+        self.fill = fill
+
+        self.active_fill = active_fill
+
+        self.hover_fill = hover_fill
+
+        self.active_hover_fill = active_hover_fill
+
+    def __initialize_border(self, border, border_width):
+        self.border = border
+        self.border_width = border_width
+
+    def __initialize_images(self, image, active_image, hover_image, active_hover_image):
+        self.image = image
+        self.active_image = active_image
+        self.hover_image = hover_image
+        self.active_hover_image = active_hover_image
+
+    def __initialize_bounds(self, bounds_type, custom_bounds):
+        if custom_bounds:
+            self.bounds = custom_bounds
+            self.bounds_type = "custom"
+        else:
+            self.bounds_type = bounds_type
+
+    def __initialize_commands(self, command, command_off):
+        self.command = command
+        self.command_off = command_off
+
+    def __initialize_trigger(self, mode, state):
+        self.mode = mode
+        self.state = state
 
     def hovered(self):
-        pass
+        if self.can_hover:
+            if self.mode == "toggle":
+                standard_methods.hovered_toggle(self)
+            elif self.mode == "standard":
+                standard_methods.hovered_standard(self)
+            self.hovering = True
 
     def hover_end(self):
-        pass
+        if self.can_hover:
+            standard_methods.hover_end(self)
+            self.hovering = False
 
+    # Utilize our standard methods to manage clicking
     def clicked(self):
-        pass
+        if self.can_click:
+            if self.mode == "toggle":
+                standard_methods.clicked_toggle(self)
+
+            elif self.mode == "standard":
+                standard_methods.clicked_standard(self)
+
+    # No standard method for releasing, most other widgets don't use this method
+    def release(self):
+        if self.can_click and self.mode == "standard":
+            self.state = not self.state
+
+            if self.visible:
+                if self.hovering:
+                    # image_flop hides all other images and shows the selected image
+                    standard_methods.image_flop(self, "hover_object")
+                else:
+                    standard_methods.image_flop(self, "image_object")
+
+                if self.command_off is not None:
+                    self.command_off()
+
+    # Utilize our standard methods to manage toggling
+    def toggle(self):
+        """Toggle appearance of button"""
+        if self.mode == "toggle":
+            standard_methods.toggle_object_toggle(self)
+
+        elif self.mode == "standard":
+            standard_methods.toggle_object_standard(self)
 
     def dragging(self, x, y):
-        pass
-
-    def release(self):
         pass
 
     def destroy(self):
@@ -133,89 +677,26 @@ class _widget:
         standard_methods.delete(self)
         self.place(self.x, self.y)
 
+    def _configure_size(self, size):
+        self.update()
+
+    def _configure_text(self, text):
+        # Update text in this widget
+        if self.text_object is not None:
+            self.master.configure(self.text_object, text=text)
+
+        if self.active_text_object is not None:
+            self.master.configure(self.active_text_object, text=text)
+
+    def _configure_position(self, position):
+        standard_methods.update_positions(self, position[0], position[1])
+
     # Default configure behavior
-    def configure(
-        self, x=None, y=None, width=None, height=None, text=None, fill="Default"
-    ):
-        """Configure the widget with the specified parameters
-
-        Args:
-            x (int, optional): x position. Defaults to None.
-            y (int, optional): y position. Defaults to None.
-            text (str, optional): Text. Defaults to None.
-            fill (color, optional): Fill color. Defaults to "Default".
-        """
-        if x is not None:
-            # Update x position of all items in this widget
-            standard_methods.update_positions(self, x, self.y)
-
-        if y is not None:
-            # Update y position of all items in this widget
-            standard_methods.update_positions(self, self.x, y)
-
-        if text is not None:
-            # Update text in this widget
-            if self.text_object is not None:
-                self.master.configure(self.text_object, text=text)
-
-            if self.active_text_object is not None:
-                self.master.configure(self.active_text_object, text=text)
-
-            self.text = text
-
-        if fill != "Default":
-            self.fill = fill
-            self.update()
-
-        if width is not None:
-            self.width = width
-            self.update()
-
-        if height is not None:
-            self.height = height
-            self.update()
-
-        # Update the bounds for this widget
-        bounds_manager.update_bounds(self, x, y, mode=self.bounds_type)
-
-        if x is not None:
-            self.x = x
-        if y is not None:
-            self.y = y
-
-        if hasattr(self, "original_x"):
-            self.original_x = x
-            self.original_y = y
+    def configure(self, **kwargs):
+        """Configure the widget with the specified parameters"""
+        for k, v in kwargs.items():
+            setattr(self, k, v)
         return self
-
-
-# Our implementation of tkinter's file_dialog.
-# This mostly just exists so that the user doesn't have to import nebulatk and tkinter
-def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
-    """Identical to tkinter.FileDialog
-
-    Args:
-        window (nebulatk.Window): Root window
-        initialdir (str, optional): Initial directory to open to. Defaults to None.
-        mode (str, optional): File open mode. Defaults to "r".
-        filetypes (list, optional): List of filetypes. Format like:
-            [
-                ("Name","*.ext"),
-                ("Name", ("*.ext", "*.ext2"))
-            ]
-            Defaults to [("All files", "*")].
-
-    Returns:
-        file: Open file
-    """
-    window.leave_window(None)
-    file = tkfile_dialog.askopenfile(
-        initialdir=initialdir,
-        mode=mode,
-        filetypes=filetypes,
-    )
-    window.leave_window(None)
-    return file
 
 
 class Button(_widget):
@@ -223,146 +704,68 @@ class Button(_widget):
     def __init__(
         self,
         root=None,
-        width=0,
-        height=0,
-        text="",
-        font=None,
-        justify="center",
-        text_color="default",
-        active_text_color=None,
-        fill="default",
-        active_fill="default",
-        border="default",
-        border_width=0,
-        image=None,
-        active_image=None,
-        hover_image=None,
-        hover_image_active=None,
-        bounds_type="default",
+        # General Variables
+        width: int = 0,
+        height: int = 0,
+        # Text Variables
+        text: str = "",
+        font: fonts_manager.Font = None,
+        justify: str = "center",
+        text_color: colors_manager.Color = "default",
+        active_text_color: colors_manager.Color = None,
+        # Color Variables
+        fill: colors_manager.Color = "default",
+        active_fill: colors_manager.Color = "default",
+        hover_fill: colors_manager.Color = "default",
+        active_hover_fill: colors_manager.Color = "default",
+        # Border Variables
+        border: colors_manager.Color = "default",
+        border_width: int = 0,
+        # Image Variables
+        image: image_manager.Image = None,
+        active_image: image_manager.Image = None,
+        hover_image: image_manager.Image = None,
+        active_hover_image: image_manager.Image = None,
+        # Bound Variables
+        bounds_type: str = "default",
+        custom_bounds: list | tuple = None,
+        # Commands
         command=None,
         command_off=None,
-        state=False,
-        mode="standard",
+        # Trigger Variables
+        mode: str = "standard",
+        state: bool = False,
     ):
-        """NebulaTk Button widget.
-
-        Args:
-            root (nebulatk.Window, optional): Root Window. Defaults to None.
-
-            width (int, optional): width. Defaults to 0.
-            height (int, optional): height. Defaults to 0.
-
-            text (str, optional): text. Defaults to "".
-            font (_type_, optional): Font. Font name, or font tuple. Defaults to None.
-            justify (str, optional): Justification for text. Defaults to None.
-
-            text_color (str, color): text color. Defaults to "default".
-            active_text_color (color, optional): color. Defaults to None.
-
-            fill (color, optional): Fill color. Defaults to "white".
-            active_fill (color, optional): Active fill color
-
-            border (color, optional): Border color. Defaults to "black".
-            border_width (int, optional): Border width. Defaults to 0.
-
-            image (str, optional): Image path. Defaults to None.
-            active_image (str, optional): Image path. Defaults to None.
-            hover_image (str, optional): Image path. Defaults to None.
-            hover_image_active (str, optional): Image path. Defaults to None.
-
-            bounds_type (str, optional): Defaults to "box" if image is not provided, or "nonstandard" otherwise.
-
-            command (function, optional): Defaults to None.
-            command_off (function, optional): Defaults to None.
-
-            state (bool, optional): _description_. Defaults to False.
-            mode (str, optional): _description_. Defaults to "standard".
-        """
-
-        # mode = "toggle" is equivalent to a tkinter checkbutton
-
-        # Load most initial variables
-        initialize.load_initial(
-            self,
+        super().__init__(
             root,
             width,
             height,
-            border_width,
+            text,
+            font,
             justify,
-            state,
-            mode,
+            text_color,
+            active_text_color,
+            fill,
+            active_fill,
+            hover_fill,
+            active_hover_fill,
+            border,
+            border_width,
+            image,
+            active_image,
+            hover_image,
+            active_hover_image,
+            bounds_type,
+            custom_bounds,
             command,
             command_off,
+            mode,
+            state,
         )
 
-        # Load our bounds type
-        initialize.load_bounds_type(self, bounds_type, image)
-
-        # Load all of our images
-        initialize.load_bulk_images(
-            self,
-            image=image,
-            active_image=active_image,
-            hover_image=hover_image,
-            hover_image_active=hover_image_active,
-        )
-
-        # Load and initialize our text and font
-        initialize.load_text(self, text, font)
-
-        # Load all of our colors
-        initialize.load_all_colors(
-            self, fill, active_fill, border, text_color, active_text_color
-        )
-
-        # Convert all of our colors to hexadecimal
-        initialize.convert_all_colors(self)
-
-    # Utilize our standard methods to manage hovering
-    def hovered(self):
-        if self.mode == "toggle":
-            standard_methods.hovered_toggle(self)
-        elif self.mode == "standard":
-            standard_methods.hovered_standard(self)
-        self.hovering = True
-
-    def hover_end(self):
-        standard_methods.hover_end(self)
-        self.hovering = False
-
-    # Utilize our standard methods to manage clicking
-    def clicked(self):
-        if self.mode == "toggle":
-            standard_methods.clicked_toggle(self)
-
-        elif self.mode == "standard":
-            standard_methods.clicked_standard(self)
-
-    # No standard method for releasing, most other widgets don't use this method
-    def release(self):
-        # We only need to do something if this == a standard button, and not a toggle button
-        if self.mode == "standard":
-            # Toggle state
-            self.state = not self.state
-
-            if self.visible:
-                if self.hovering:
-                    # image_flop hides all other images and shows the selected image
-                    standard_methods.image_flop(self, "hover_object")
-                else:
-                    standard_methods.image_flop(self, "image_object")
-
-                if self.command_off is not None:
-                    self.command_off()
-
-    # Utilize our standard methods to manage toggling
-    def toggle(self):
-        """Toggle appearance of button"""
-        if self.mode == "toggle":
-            standard_methods.toggle_object_toggle(self)
-
-        elif self.mode == "standard":
-            standard_methods.toggle_object_standard(self)
+        self.can_hover = True
+        self.can_click = True
+        self.can_type = False
 
 
 class Slider(_widget):
@@ -558,34 +961,24 @@ class Label(_widget):
             image (str, optional): Image path. Defaults to None.
             bounds_type (str, optional): _description_. Defaults to "box" if image is not provided, or "nonstandard" otherwise. Defaults to "box" if no image == provided, or "non-standard" if an image == provided.
         """
-        # Load most initial variables
-        initialize.load_initial(
-            self,
-            root,
-            width,
-            height,
-            border_width,
-            justify,
+        super().__init__(
+            root=root,
+            width=width,
+            height=height,
+            text=text,
+            font=font,
+            justify=justify,
+            border=border,
+            text_color=text_color,
+            fill=fill,
+            border_width=border_width,
+            image=image,
+            bounds_type=bounds_type,
+            angle=angle,
         )
-
-        # Load our bounds type
-        initialize.load_bounds_type(self, bounds_type, image)
-
-        # Load all of our images
-        initialize.load_bulk_images(self, image=image)
-
-        # Load and initialize our text and font
-        initialize.load_text(self, text, font)
-
-        # Load all of our colors
-        initialize.load_all_colors(
-            self, fill=fill, border=border, text_color=text_color
-        )
-
-        # Convert all of our colors to hexadecimal
-        initialize.convert_all_colors(self)
-
-        self.angle = angle
+        self.can_hover = False
+        self.can_click = False
+        self.can_type = False
 
 
 class Entry(_widget):
@@ -705,21 +1098,20 @@ class Frame(_widget):
             border_width (int, optional): Border width. Defaults to 1.
             bounds_type (str, optional): Defaults to "box" if image is not provided, or "nonstandard" otherwise. Defaults to "box".
         """
-
-        # Load most initial variables
-        initialize.load_initial(self, root, width, height, border_width)
-
-        # Load our bounds type
-        initialize.load_bounds_type(self, bounds_type)
-
-        # Load all of our images
-        initialize.load_bulk_images(self, image=image)
-
-        # Load all of our colors
-        initialize.load_all_colors(self, fill=fill, border=border)
-
-        # Convert all of our colors to hexadecimal
-        initialize.convert_all_colors(self)
+        print("hi")
+        super().__init__(
+            root=root,
+            width=width,
+            height=height,
+            image=image,
+            fill=fill,
+            border=border,
+            border_width=border_width,
+            bounds_type=bounds_type,
+        )
+        self.can_hover = False
+        self.can_click = False
+        self.can_type = False
 
 
 # Internal window class to implement threading
@@ -777,6 +1169,8 @@ class _window_internal(threading.Thread):
         # Initialize rest of variables
         self.running = True
         self.closing_command = closing_command
+
+        self.defaults = defaults.new()
 
     # NOTE: EVENT HANDLERS
 
@@ -888,7 +1282,9 @@ class _window_internal(threading.Thread):
     # Wrapper for canvas.create_image method
     def create_image(self, x, y, image, state="normal"):
         self.images.append(image)
-        return self.canvas.create_image(x, y, image=image, anchor="nw", state=state)
+        return self.canvas.create_image(
+            x, y, image=image.tk_image(self), anchor="nw", state=state
+        )
 
     # Wrapper for canvas.create_rectangle method
     def create_rectangle(
@@ -1102,9 +1498,10 @@ colors = [
 # NOTE: EXAMPLE WINDOW
 def __main__():
     canvas = Window()
-    Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
-        0, 0
-    )
+    f = Frame(
+        canvas, image="examples/Images/background.png", width=500, height=500
+    ).place(0, 0)
+    print(f.border, f.border_width)
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
@@ -1114,7 +1511,7 @@ def __main__():
         image="examples/Images/main_button_inactive.png",
         active_image="examples/Images/main_button_inactive2.png",
         hover_image="examples/Images/main_button_active.png",
-        hover_image_active="examples/Images/main_button_active2.png",
+        active_hover_image="examples/Images/main_button_active2.png",
         mode="toggle",
     ).place(0, 0)
     Button(

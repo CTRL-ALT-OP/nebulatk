@@ -12,6 +12,21 @@ FR_PRIVATE = 0x10
 FR_NOT_ENUM = 0x20
 
 
+class Font:
+    def __init__(self, font: str | list | tuple):
+        if font in ("default", None):
+            # Default font
+            self.font = ("Helvetica", -1)
+
+        # If only font name is specified
+        if type(font) is str:
+            self.font = (font, 10)
+
+        elif type(font) in (list, tuple):
+            # Assume font is (font, size)
+            self.font = font
+
+
 def loadfont(fontpath, private=True, enumerable=False):
     if not ctypes_available:
         return

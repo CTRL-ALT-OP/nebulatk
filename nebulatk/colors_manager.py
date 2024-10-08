@@ -1,6 +1,103 @@
 import string
 
 
+class Color(str):
+    def __init__(self, value):
+        if value is not None:
+            self.color = convert_to_hex(value)
+            self.rgba = convert_to_rgb(value)
+        else:
+            self.color = None
+            self.rgba = None
+
+    def brighten(self, increment=10):
+        """Brighten a color by an increment.
+
+        Args:
+            color (color): color
+            increment (int, optional): Increment to brighten color by. Out of 255. Defaults to 10.
+
+        Returns:
+            str: Hex color string
+        """
+        # Convert color to rgb
+        color = self.rgba
+
+        # If RGBA
+        if len(color) > 3:
+            return Color(
+                convert_to_hex(
+                    (
+                        # Clamp color values to 255 or lower
+                        min(color[0] + increment, 255),
+                        min(color[1] + increment, 255),
+                        min(color[2] + increment, 255),
+                        color[3],
+                    )
+                )
+            )
+
+        # If RGB
+        return Color(
+            convert_to_hex(
+                (
+                    # Clamp color values to 255 or lower
+                    min(color[0] + increment, 255),
+                    min(color[1] + increment, 255),
+                    min(color[2] + increment, 255),
+                )
+            )
+        )
+
+    def darken(self, increment=10):
+        """Darken a color by an increment.
+
+        Args:
+            color (color): color
+            increment (int, optional): Increment to darken color by. Out of 255. Defaults to 10.
+
+        Returns:
+            str: Hex color string
+        """
+        # Convert color to rgb
+        color = self.rgba
+
+        # If RGBA
+        if len(color) > 3:
+            return Color(
+                convert_to_hex(
+                    (
+                        # Clamp color values to 0 or higher
+                        max(color[0] - increment, 0),
+                        max(color[1] - increment, 0),
+                        max(color[2] - increment, 0),
+                        color[3],
+                    )
+                )
+            )
+
+        # If RGB
+        return Color(
+            convert_to_hex(
+                (
+                    # Clamp color values to 0 or higher
+                    max(color[0] - increment, 0),
+                    max(color[1] - increment, 0),
+                    max(color[2] - increment, 0),
+                )
+            )
+        )
+
+    def __str__(self):
+        return self.color
+
+    def __eq__(self, other):
+        return self.color == other
+
+    def startswith(self, prefix: str | tuple[str, ...]) -> bool:
+        return self.color.startswith(prefix)
+
+
 def convert_to_hex(color):
     """Convert arbitrary color type to a hex string
 
@@ -14,12 +111,12 @@ def convert_to_hex(color):
     global colors
 
     # If color is a string,
-    if type(color) == str:
+    if type(color) is str:
         # If doesn't start with '#', check if it's a hex string
         if not color.startswith("#"):
             # If it is a hex string, add '#' to the beginning and return it
             if all(c in string.hexdigits for c in color):
-                return "#" + color
+                return f"#{color}"
 
             # If it's not a hex string, it must be a default color
             # Return hex string from default color
@@ -28,13 +125,12 @@ def convert_to_hex(color):
         # If color is a hex string, return it
         return color
 
-    # If color is a list, convert it to a tuple
-    elif type(color) == list:
+    elif type(color) is list:
         color = tuple(color)
 
     # If color is a tuple, check if it is RGB or RGBA
     # Convert to hex and return result
-    if type(color) == tuple:
+    if type(color) is tuple:
         if len(color) > 3:
             return "#%02x%02x%02x%02x" % color
         return "#%02x%02x%02x" % color
@@ -53,12 +149,12 @@ def convert_to_rgb(color):
     global colors
 
     # If color is a string,
-    if type(color) == str:
+    if type(color) in (str, Color):
+        if type(color) is Color:
+            color = color.color
         # If doesn't start with '#', check if it's a hex string. If it isn't, it must be a default color.
-        if not color.startswith("#"):
-            if not all(c in string.hexdigits for c in color):
-                return colors[color][1]
-
+        if not color.startswith("#") and any(c not in string.hexdigits for c in color):
+            return colors[color][1]
         # Strip '#' off end
         color = color.lstrip("#")
 
@@ -69,7 +165,6 @@ def convert_to_rgb(color):
         # Else convert to hex string with 3 channels
         return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
 
-    # If it is already a RGB or RGBA tuple, return the tuple version of it
     elif type(color) in (list, tuple):
         color = tuple(color)
         return color
@@ -86,92 +181,15 @@ def check_full_white_or_black(color):
     """
     # Convert color to RGB format
     color = convert_to_rgb(color)
-
     # Check sum of first 3 elements in color
-    sum_all = sum(color[0:3])
+    sum_all = sum(color[:3])
 
     # All white
     if sum_all == 255 * 3:
         return 1
 
     # All black
-    if sum_all == 0:
-        return -1
-
-    # Neither
-    return 0
-
-
-def brighten(color, increment=10):
-    """Brighten a color by an increment.
-
-    Args:
-        color (color): color
-        increment (int, optional): Increment to brighten color by. Out of 255. Defaults to 10.
-
-    Returns:
-        str: Hex color string
-    """
-    # Convert color to rgb
-    color = convert_to_rgb(color)
-
-    # If RGBA
-    if len(color) > 3:
-        return convert_to_hex(
-            (
-                # Clamp color values to 255 or lower
-                min(color[0] + increment, 255),
-                min(color[1] + increment, 255),
-                min(color[2] + increment, 255),
-                color[3],
-            )
-        )
-
-    # If RGB
-    return convert_to_hex(
-        (
-            # Clamp color values to 255 or lower
-            min(color[0] + increment, 255),
-            min(color[1] + increment, 255),
-            min(color[2] + increment, 255),
-        )
-    )
-
-
-def darken(color, increment=10):
-    """Darken a color by an increment.
-
-    Args:
-        color (color): color
-        increment (int, optional): Increment to darken color by. Out of 255. Defaults to 10.
-
-    Returns:
-        str: Hex color string
-    """
-    # Convert color to rgb
-    color = convert_to_rgb(color)
-
-    # If RGBA
-    if len(color) > 3:
-        return convert_to_hex(
-            (
-                # Clamp color values to 0 or higher
-                max(color[0] - increment, 0),
-                max(color[1] - increment, 0),
-                max(color[2] - increment, 0),
-                color[3],
-            )
-        )
-
-    # If RGB
-    return convert_to_hex(
-        (
-            # Clamp color values to 0 or higher
-            max(color[0] - increment, 0),
-            max(color[1] - increment, 0),
-            max(color[2] - increment, 0),
-        )
-    )
+    return -1 if sum_all == 0 else 0
 
 
 global colors

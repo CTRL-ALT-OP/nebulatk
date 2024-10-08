@@ -83,6 +83,7 @@ def image_flop(_object, val):
         val (str): Item to show
     """
     visible = "normal" if _object.visible else "hidden"
+    print(val, check(_object, val))
     if check(_object, val):
         for obj in IMAGE_OBJECTS:
             if hasattr(_object, obj):
@@ -359,9 +360,10 @@ def place_bulk(_object, x, y):
     x, y = rel_position_to_abs(_object, x, y)
     # Only place background rectangles if there == a fill or border
     # Place slider_bg_object
+    colors = _object._colors
     state = "normal" if _object.visible else "hidden"
-    if _object.slider_fill is not None or (
-        _object.slider_border is not None and _object.slider_border_width != 0
+    """if colors["slider_fill"] is not None or (
+        colors["slider_border"] is not None and _object.slider_border_width != 0
     ):
         _object.slider_bg_object = _object.master.create_rectangle(
             x,
@@ -372,7 +374,7 @@ def place_bulk(_object, x, y):
             border_width=_object.slider_border_width,
             outline=_object.slider_border,
             state=state,
-        )
+        )"""
     # Place bg_object
     if _object.fill is not None or (
         _object.border is not None and _object.border_width != 0
@@ -402,14 +404,14 @@ def place_bulk(_object, x, y):
         )
 
     # Place images
-    for img in ["image", "active_image", "hover_image", "hover_image_active"]:
+    for img in ["image", "active_image", "hover_image", "active_hover_image"]:
         if check(_object, img):
             state = "hidden"
             img_object = img.split("_")[0] + "_object"
             if img == "image" and _object.visible:
                 state = "normal"
-            if img == "hover_image_active":
-                img_object += "_active"
+            if img == "active_hover_image":
+                img_object = "hover_object_active"
 
             setattr(
                 _object,
