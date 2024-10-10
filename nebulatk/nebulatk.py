@@ -87,6 +87,8 @@ class _widget_properties:
         if self._root is not None and self.root != self.root.master:
             root.children.remove(self)
 
+        if root != root.master:
+            root.children.append(self)
         self._root = root
         self.master = root.master
         self.children = []
@@ -110,8 +112,8 @@ class _widget_properties:
         return self._size[1]
 
     @height.setter
-    def width(self, width):
-        self._size[1] = width
+    def height(self, height):
+        self._size[1] = height
 
         if self.initialized:
             self._configure_size(self._size)
@@ -170,7 +172,6 @@ class _widget_properties:
             font = self.master.defaults.get_attribute("default_font").font
         else:
             font = fonts_manager.Font(font).font
-
         if self.text not in ("", None):
             min_width, min_height = fonts_manager.get_min_button_size(
                 self.master, font, self.text
@@ -434,6 +435,7 @@ class _widget(_widget_properties):
         # Commands
         command=None,
         command_off=None,
+        dragging_command=None,
         # Trigger Variables
         mode: str = "standard",
         state: bool = False,
@@ -452,7 +454,7 @@ class _widget(_widget_properties):
 
         self.__initialize_bounds(bounds_type, custom_bounds)
 
-        self.__initialize_commands(command, command_off)
+        self.__initialize_commands(command, command_off, dragging_command)
 
         self.__initialize_trigger(mode, state)
 
@@ -531,9 +533,10 @@ class _widget(_widget_properties):
         else:
             self.bounds_type = bounds_type
 
-    def __initialize_commands(self, command, command_off):
+    def __initialize_commands(self, command, command_off, dragging_command):
         self.command = command
         self.command_off = command_off
+        self.dragging_command = dragging_command
 
     def __initialize_trigger(self, mode, state):
         self.mode = mode
@@ -586,7 +589,9 @@ class _widget(_widget_properties):
             standard_methods.toggle_object_standard(self)
 
     def dragging(self, x, y):
-        pass
+        if self.dragging_command:
+            x, y = standard_methods.abs_position_to_rel(self, x, y)
+            self.dragging_command(x, y)
 
     def destroy(self):
         standard_methods.delete(self)
@@ -732,6 +737,7 @@ class Button(_widget):
         # Commands
         command=None,
         command_off=None,
+        dragging_command=None,
         # Trigger Variables
         mode: str = "standard",
         state: bool = False,
@@ -759,6 +765,7 @@ class Button(_widget):
             custom_bounds,
             command,
             command_off,
+            dragging_command,
             mode,
             state,
         )
@@ -775,29 +782,36 @@ class Slider(_widget):
         root=None,
         width=0,
         height=0,
-        slider_height=10,
-        minimum=0,
-        maximum=100,
-        text="",
-        font=None,
-        justify="center",
-        text_color="default",
-        active_text_color=None,
-        fill="default",
-        active_fill="default",
-        border="default",
-        border_width=0,
-        slider_border_width=0,
-        slider_fill="default",
-        slider_border="default",
         image=None,
-        active_image=None,
-        hover_image=None,
-        hover_image_active=None,
-        bounds_type="default",
-        command=None,
-        command_off=None,
-        state=False,
+        fill="default",
+        border="default",
+        border_width=1,
+        bounds_type="box",
+        # Slider properties
+        slider_width: int = 0,
+        slider_height: int = 0,
+        # Text Variables
+        slider_text: str = "",
+        slider_font: fonts_manager.Font = None,
+        slider_justify: str = "center",
+        slider_text_color: colors_manager.Color = "default",
+        slider_active_text_color: colors_manager.Color = None,
+        # Color Variables
+        slider_fill: colors_manager.Color = "default",
+        slider_active_fill: colors_manager.Color = "default",
+        slider_hover_fill: colors_manager.Color = "default",
+        slider_active_hover_fill: colors_manager.Color = "default",
+        # Border Variables
+        slider_border: colors_manager.Color = "default",
+        slider_border_width: int = 0,
+        # Image Variables
+        slider_image: image_manager.Image = None,
+        slider_active_image: image_manager.Image = None,
+        slider_hover_image: image_manager.Image = None,
+        slider_active_hover_image: image_manager.Image = None,
+        # Bound Variables
+        slider_bounds_type: str = "default",
+        slider_custom_bounds: list | tuple = None,
     ):
         """Slider widget
 
@@ -842,91 +856,54 @@ class Slider(_widget):
 
             state (bool, optional): _description_. Defaults to False.
         """
-
-        # Load most initial variables
-        initialize.load_initial(
-            self,
-            root,
-            width,
-            height,
-            border_width,
-            justify,
-            state,
-            None,
-            command,
-            command_off,
-            slider_height,
-            maximum,
-            minimum,
-            slider_border_width,
-        )
-
-        # Load bounds type
-        initialize.load_bounds_type(self, bounds_type, image)
-
-        # Load all of our images
-        initialize.load_bulk_images(
-            self,
+        super().__init__(
+            root=root,
+            width=width,
+            height=height,
             image=image,
-            active_image=active_image,
-            hover_image=hover_image,
-            hover_image_active=hover_image_active,
+            fill=fill,
+            border=border,
+            border_width=border_width,
+            bounds_type=bounds_type,
         )
-
-        # Load and initialize our text and font
-        initialize.load_text(self, text, font)
-
-        # Load all of our colors
-        initialize.load_all_colors(
+        self.can_hover = False
+        self.can_click = False
+        self.can_type = False
+        self.button = Button(
             self,
-            fill,
-            active_fill,
-            border,
-            text_color,
-            active_text_color,
-            slider_fill,
-            slider_border,
-        )
+            width=slider_width,
+            height=slider_height,
+            text=slider_text,
+            font=slider_font,
+            justify=slider_justify,
+            text_color=slider_text_color,
+            active_text_color=slider_active_text_color,
+            fill=slider_fill,
+            active_fill=slider_active_fill,
+            hover_fill=slider_hover_fill,
+            active_hover_fill=slider_active_hover_fill,
+            border=slider_border,
+            border_width=slider_border_width,
+            image=slider_image,
+            active_image=slider_active_image,
+            hover_image=slider_hover_image,
+            active_hover_image=slider_active_hover_image,
+            bounds_type=slider_bounds_type,
+            custom_bounds=slider_custom_bounds,
+            dragging_command=self._dragging,
+        ).place()
 
-        # Convert all of our colors to hexadecimal
-        initialize.convert_all_colors(self)
-
-    # Utilize our standard methods for hovering
-    def hovered(self):
-        standard_methods.hovered_standard(self)
-        self.hovering = True
-
-    def hover_end(self):
-        standard_methods.hover_end(self)
-        self.hovering = False
-
-    # Utilize standard method for toggling
-    def toggle(self):
-        standard_methods.toggle_object_standard(self)
-
-    # Implement dragging along x ax== for slider
-    def dragging(self, x, y):
+    # Implement dragging along x axis for slider
+    def _dragging(self, x, y):
         # Change our x position to be on the edge of the slider
         # this has the effect of the mouse moving the slider from the center of the slider
-        x = x - self.width / 2
+        x = x - self.button.width / 2
 
         # Clamp our x to the minimum and maximum values, compensating for the position offset,
-        x = standard_methods.clamp(
-            x, self.minimum + self.original_x, self.maximum + self.original_x
-        )
+        x = standard_methods.clamp(x, 0, self.width - self.button.width)
 
         # Update the positions of all the objects in the slider, avoiding updating the actual background and widget positions
-        standard_methods.update_positions(self, x, self.y, avoid_slider=True)
-
-        # Update the bounds of the slider
-        bounds_manager.update_bounds(self, x, self.y, mode=self.bounds_type)
-
-        # Execute whatever command == set for dragging
-        if self.command:
-            self.command()
-
-        # Update our x position
-        self.x = x
+        self.button.place(x, self.button.y)
 
 
 class Label(_widget):
@@ -1081,8 +1058,8 @@ class Frame(_widget):
         width=0,
         height=0,
         image=None,
-        fill=None,
-        border="black",
+        fill="default",
+        border="default",
         border_width=1,
         bounds_type="box",
     ):
@@ -1098,7 +1075,6 @@ class Frame(_widget):
             border_width (int, optional): Border width. Defaults to 1.
             bounds_type (str, optional): Defaults to "box" if image is not provided, or "nonstandard" otherwise. Defaults to "box".
         """
-        print("hi")
         super().__init__(
             root=root,
             width=width,
@@ -1498,10 +1474,9 @@ colors = [
 # NOTE: EXAMPLE WINDOW
 def __main__():
     canvas = Window()
-    f = Frame(
-        canvas, image="examples/Images/background.png", width=500, height=500
-    ).place(0, 0)
-    print(f.border, f.border_width)
+    Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
+        0, 0
+    )
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
@@ -1520,6 +1495,15 @@ def __main__():
         font=("Helvetica", 50),
         fill=[255, 67, 67, 45],
     ).place(0, 400)
+    Slider(
+        canvas,
+        width=100,
+        height=20,
+        slider_width=20,
+        slider_height=20,
+        slider_border_width=2,
+        slider_fill="#ffaaaa",
+    ).place(100, 100)
     # ImageButton(canvas,image="Images/test_inactive.png",active_image="Images/test_active.png").place(0,0)
     # btn_4 = Button(canvas,15,15,text="hahah").place(15,15)
     # btn_4.place(50,60)

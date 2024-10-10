@@ -89,7 +89,7 @@ class Color(str):
         )
 
     def __str__(self):
-        return self.color
+        return str(self.color)
 
     def __eq__(self, other):
         return self.color == other

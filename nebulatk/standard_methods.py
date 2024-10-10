@@ -71,6 +71,16 @@ def rel_position_to_abs(_object, x, y):
     return x, y
 
 
+def abs_position_to_rel(_object, x, y):
+    # Add up positions for relative offsets in parent tree
+    obj = _object
+    while obj.root != obj.master:
+        x -= obj.root.x
+        y -= obj.root.y
+        obj = obj.root
+    return x, y
+
+
 # ============================================================ FLOPS ======================================================================
 # NOTE: Flops hide all items of a type, and shows the selected item
 
@@ -83,7 +93,6 @@ def image_flop(_object, val):
         val (str): Item to show
     """
     visible = "normal" if _object.visible else "hidden"
-    print(val, check(_object, val))
     if check(_object, val):
         for obj in IMAGE_OBJECTS:
             if hasattr(_object, obj):
