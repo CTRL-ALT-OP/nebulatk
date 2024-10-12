@@ -63,9 +63,9 @@ def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))
 # This is largely so we don't ever need to initialize methods that will never be used (e.g. hovered on a frame)
 class _widget_properties:
     def __synthesize_color(self, name, color, no_image=True):
-        if not no_image:
-            return colors_manager.Color(None)
         if color == "default":
+            if not no_image:
+                return colors_manager.Color(None)
             if hasattr(self.master.defaults, f"default_{name}"):
                 color = getattr(self.master.defaults, f"default_{name}")
             else:
@@ -76,7 +76,7 @@ class _widget_properties:
         return color
 
     def __convert_image(self, image):
-        return image_manager.Image(image) if type(image) is str else image
+        return image_manager.Image(image, self) if type(image) is str else image
 
     @property
     def root(self):
@@ -477,6 +477,7 @@ class _widget(_widget_properties):
         self.active_text_object = None
 
         self.visible = True
+        self.hovering = False
 
         self._root = None
         self.root = root
@@ -951,7 +952,7 @@ class Label(_widget):
             border_width=border_width,
             image=image,
             bounds_type=bounds_type,
-            angle=angle,
+            # angle=angle,
         )
         self.can_hover = False
         self.can_click = False
@@ -1306,6 +1307,11 @@ class _window_internal(threading.Thread):
         if _object is not None:
             self.canvas.move(_object, x, y)
 
+    def object_place(self, _object, x, y):
+        if _object is not None:
+            coords = self.canvas.coords(_object)
+            self.move(_object, x - coords[0], y - coords[1])
+
     # Wrapper for canvas.delete method
     def delete(self, _object):
         self.canvas.delete(_object)
@@ -1487,13 +1493,17 @@ def __main__():
         active_image="examples/Images/main_button_inactive2.png",
         hover_image="examples/Images/main_button_active.png",
         active_hover_image="examples/Images/main_button_active2.png",
+        width=100,
+        height=100,
         mode="toggle",
+        border_width=2,
     ).place(0, 0)
     Button(
         canvas,
         text="hi",
         font=("Helvetica", 50),
         fill=[255, 67, 67, 45],
+        border_width=2,
     ).place(0, 400)
     Slider(
         canvas,

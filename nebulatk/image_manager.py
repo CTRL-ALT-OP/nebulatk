@@ -17,7 +17,7 @@ class Image:
         if path is not None:
             # Open image
             self.image = pil.open(path)
-
+            print(_object)
             if _object is not None:
                 # Resize image if size isn't specified
                 if _object.width != 0 and _object.height != 0:

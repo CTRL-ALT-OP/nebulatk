@@ -27,7 +27,7 @@ TEXT_OBJECTS = [
 
 SLIDER_OBJECTS = ["slider_object", "slider_bg_object"]
 
-ALL_OBJECTS = IMAGE_OBJECTS + BG_OBJECTS + TEXT_OBJECTS + SLIDER_OBJECTS
+ALL_OBJECTS = IMAGE_OBJECTS + BG_OBJECTS + TEXT_OBJECTS  # + SLIDER_OBJECTS
 
 
 def check(_object, attribute):
@@ -173,7 +173,7 @@ def flop_on(_object):
     else:
         text_flop(_object, "text_object")
 
-    _object.master.change_state(_object.slider_bg_object, visible)
+    # _object.master.change_state(_object.slider_bg_object, visible)
 
 
 # ============================================================ STANDARD WIDGET MANAGMENT METHODS ==========================================
@@ -325,7 +325,7 @@ def clicked_toggle(_object):
 # ------------------------------------------------------------ POSITION BEHAVIOURS ----------------------------------------------------------
 
 
-def _update_position(_object, item, x, y):
+def _update_position(_object, item, x, y, old_x, old_y):
     """Internal update_position method
 
     Args:
@@ -334,9 +334,11 @@ def _update_position(_object, item, x, y):
         x (int): x position
         y (int): y position
     """
-    old_x, old_y = rel_position_to_abs(_object, _object.x, _object.y)
     if check(_object, item):
-        _object.master.move(getattr(_object, item), x - old_x, y - old_y)
+        if item.find("image") != -1:
+            x += _object.border_width / 2
+            y += _object.border_width / 2
+        _object.master.object_place(getattr(_object, item), x, y)
 
 
 def update_positions(_object, x, y, avoid_slider=False):
@@ -349,12 +351,12 @@ def update_positions(_object, x, y, avoid_slider=False):
         avoid_slider (bool, optional): Request to avoid touching the slider background objects. Defaults to False.
     """
     x, y = rel_position_to_abs(_object, x, y)
+    old_x, old_y = rel_position_to_abs(_object, _object.x, _object.y)
 
     for obj in ALL_OBJECTS:
         if obj == "slider_bg_object" and avoid_slider:
             continue
-
-        _update_position(_object, obj, x, y)
+        _update_position(_object, obj, x, y, old_x, old_y)
 
 
 # ------------------------------------------------------------ PLACEMENT BEHAVIOURS ---------------------------------------------------------
