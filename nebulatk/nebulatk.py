@@ -69,10 +69,13 @@ class _widget_properties:
             if hasattr(self.master.defaults, f"default_{name}"):
                 color = getattr(self.master.defaults, f"default_{name}")
             else:
-                name = name.lstrip("active_hover_")
+                name = "_".join(
+                    [i for i in name.split("_") if i not in ["active", "hover"]]
+                )
                 color = defaults._offset(self._colors[name], 40)
         else:
             color = colors_manager.Color(color)
+
         return color
 
     def __convert_image(self, image):
@@ -141,12 +144,12 @@ class _widget_properties:
             self._configure_position(self._position)
 
     @property
-    def angle(self):
-        return self._angle
+    def orientation(self):
+        return self._orientation
 
-    @angle.setter
-    def angle(self, value):
-        self._angle = value
+    @orientation.setter
+    def orientation(self, value):
+        self._orientation = value
 
         if self.initialized:
             self.update()
@@ -217,7 +220,7 @@ class _widget_properties:
     def text_color(self, value):
         value = self.__synthesize_color("text_color", value, self._no_image)
         self._colors["text_color"] = value
-
+        # print(self._colors)
         if self.initialized:
             self.update()
 
@@ -398,9 +401,6 @@ class _widget_properties:
         self._bounds = value
         self._bounds_type = "non-standard"
 
-        if self.initialized:
-            bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
-
 
 class _widget(_widget_properties):
 
@@ -410,6 +410,7 @@ class _widget(_widget_properties):
         # General Variables
         width: int = 0,
         height: int = 0,
+        orientation: int = 0,
         # Text Variables
         text: str = "",
         font: fonts_manager.Font = None,
@@ -440,8 +441,7 @@ class _widget(_widget_properties):
         mode: str = "standard",
         state: bool = False,
     ):
-        self.__initialize_general(root, width, height)
-
+        self.__initialize_general(root, width, height, orientation)
         self.__initialize_text(text, font, justify, text_color, active_text_color)
 
         self.__initialize_colors(
@@ -460,7 +460,7 @@ class _widget(_widget_properties):
 
         self.initialized = True
 
-    def __initialize_general(self, root, width, height):
+    def __initialize_general(self, root, width, height, orientation):
         self.initialized = False
         self._no_image = True
 
@@ -482,17 +482,20 @@ class _widget(_widget_properties):
         self._root = None
         self.root = root
 
+        self.root.master.children.insert(0, self)
+
         self._size = [width, height]
 
         self._position = [0, 0]
 
-        self.angle = 0
+        self.orientation = 0
 
         self._colors = {}
 
         self._images = {}
 
     def __initialize_text(self, text, font, justify, text_color, active_text_color):
+        # print("hit", type(self), text_color)
         self.text = text
         self._entire_text = text
 
@@ -596,6 +599,7 @@ class _widget(_widget_properties):
 
     def destroy(self):
         standard_methods.delete(self)
+        self.root.master.children.remove(self)
 
     def typed(self, character):
         pass
@@ -618,7 +622,7 @@ class _widget(_widget_properties):
         standard_methods.flop_off(self)
 
         # Remove this widget from the bounds
-        bounds_manager.remove_bounds(self, self.bounds_type)
+        # bounds_manager.remove_bounds(self, self.bounds_type)
 
         # Always return self on methods the user might call. this allows for chaining like button = Button().place().hide()
         return self
@@ -635,7 +639,7 @@ class _widget(_widget_properties):
         standard_methods.flop_on(self)
 
         # Add this widget to bounds
-        bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
+        # bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
         return self
 
     def show(self):
@@ -652,8 +656,7 @@ class _widget(_widget_properties):
             x (int, optional): x position. Defaults to 0.
             y (int, optional): y position. Defaults to 0.
         """
-        self.abs_x = x
-        self.abs_y = y
+        # old_x, old_y = self.x, self.y
         x = int(x)
         y = int(y)
         if self.bg_object is None and self.image_object is None:
@@ -666,10 +669,9 @@ class _widget(_widget_properties):
                 self.object = self.text_object
         else:
             standard_methods.update_positions(self, x, y)
-        bounds_manager.update_bounds(self, x, y, mode=self.bounds_type)
+        # bounds_manager.update_bounds(self, old_x, old_y, x, y, mode=self.bounds_type)
 
-        self.x = x
-        self.y = y
+        self._position = [x, y]
 
         self._update_children()
 
@@ -747,6 +749,7 @@ class Button(_widget):
             root,
             width,
             height,
+            0,
             text,
             font,
             justify,
@@ -914,6 +917,7 @@ class Label(_widget):
         root=None,
         width=0,
         height=0,
+        orientation=0,
         text="",
         font=None,
         justify="center",
@@ -923,7 +927,6 @@ class Label(_widget):
         border_width=0,
         image=None,
         bounds_type="default",
-        angle=0,
     ):
         """_summary_
 
@@ -943,6 +946,7 @@ class Label(_widget):
             root=root,
             width=width,
             height=height,
+            orientation=orientation,
             text=text,
             font=font,
             justify=justify,
@@ -952,7 +956,6 @@ class Label(_widget):
             border_width=border_width,
             image=image,
             bounds_type=bounds_type,
-            # angle=angle,
         )
         self.can_hover = False
         self.can_click = False
@@ -1129,6 +1132,8 @@ class _window_internal(threading.Thread):
         self.resizable = resizable
         self.override = override
 
+        self.children = []
+
         self.title = title
 
         # Initialize canvas size
@@ -1157,10 +1162,11 @@ class _window_internal(threading.Thread):
         x = int(event.x)
         y = int(event.y)
 
-        # Temp variable active_new
-        # Default to None in case no object was clicked on
-        active_new = None
-
+        active_new = next(
+            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
+            None,
+        )
+        """
         # Find the object that was clicked
         # Check if there are any objects initialized at that position
         if y in self.bounds:
@@ -1172,9 +1178,9 @@ class _window_internal(threading.Thread):
                     # Set active_new and break
                     active_new = i[0]
                     break
-
-        # If the new object == actually new, update the current active widget
-        # self.active == used for things like detecting what widget to send keypresses to
+        """
+        # If the new object is actually new, update the current active widget
+        # self.active is used for things like detecting what widget to send keypresses to
         if active_new is not self.active:
             self.active = active_new
 
@@ -1182,7 +1188,7 @@ class _window_internal(threading.Thread):
         if active_new is not self.down:
             self.down = active_new
 
-            # If the new object == a valid widget
+            # If the new object is a valid widget
             if active_new is not None:
                 # Click on the object
                 active_new.clicked()
@@ -1202,12 +1208,19 @@ class _window_internal(threading.Thread):
 
         # Temp variable hovered_new
         # Default to None in case no object was hovered over
-        hovered_new = None
 
-        # If something == already being clicked on, this == also a dragging event on that widget.
+        # If something is already being clicked on, this is also a dragging event on that widget.
         if self.down is not None:
             self.down.dragging(x, y)
 
+        hovered_new = next(
+            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
+            None,
+        )
+
+        if hovered_new is not self.hovered:
+            hovered_new.hovered()
+        """
         # Find the object that was hovered over
         # Check if there are any objects initialized at that position
         if y in self.bounds:
@@ -1218,12 +1231,13 @@ class _window_internal(threading.Thread):
                     # Object found
                     # If this object wasn't already being hovered over, trigger new object's hovered event
                     if i[0] is not self.hovered:
+                        print("hovered")
                         i[0].hovered()
 
                     # Set hovered_new and break
                     hovered_new = i[0]
                     break
-
+        """
         # If the object wasn't already being hovered over, check that there was something being hovered over previously and trigger the old object's hover_end event
         if hovered_new is not self.hovered:
             if self.hovered is not None:
@@ -1497,14 +1511,14 @@ def __main__():
         height=100,
         mode="toggle",
         border_width=2,
-    ).place(0, 0)
+    ).place(0, 0).place(100, 100)
     Button(
         canvas,
         text="hi",
         font=("Helvetica", 50),
         fill=[255, 67, 67, 45],
         border_width=2,
-    ).place(0, 400)
+    ).place(0, 400).place(100, 400)
     Slider(
         canvas,
         width=100,

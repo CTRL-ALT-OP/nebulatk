@@ -3,6 +3,8 @@ try:
 except ImportError:
     import standard_methods
 
+from PIL import Image
+
 
 def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     """Generates bounds for an image with arbitrary shapes and transparency
@@ -14,44 +16,75 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     Returns:
         dict: Resultant bounds
     """
-    pixels = image.load()
+    if not isinstance(image, Image.Image):
+        raise TypeError("Input image must be a PIL Image object.")
+
     width, height = image.size
+    threshold = round(tolerance * 255)
 
     bounds = {}
-    start_pixel = None
-
-    # Execute function twice if no bounds are found the first pass
     while not bounds and tolerance >= 0:
-        # Iterate over the pixels
+        # Optimized pixel access using getdata()
+        pixels = list(image.getdata())
         for y in range(height):
-            for x in range(width):
-                cpixel = pixels[x, y]
+            row_bounds = []
+            start_pixel = None
 
-                # If the pixel is opaque enough to be over the tolerance threshold, and no line start was found, it is the start of a line
-                if cpixel[3] >= round(tolerance * 255):
+            row_pixels = pixels[y * width : (y + 1) * width]
+            for x, pixel in enumerate(row_pixels):
+                if isinstance(pixel, int):  # Handle single-channel images
+                    opacity = pixel
+                else:
+                    opacity = (
+                        pixel[3] if len(pixel) > 3 else 255
+                    )  # Default to opaque if no alpha channel
+
+                if opacity >= threshold:
                     if start_pixel is None:
                         start_pixel = x
-
-                # If the pixel doesn't hit the tolerance threshold, the line ends with the previous pixel
                 elif start_pixel is not None:
-                    # Add line to the bounds
-                    if y in bounds:
-                        bounds[y].append([start_pixel, x - 1])
-                    else:
-                        bounds[y] = [[start_pixel, x - 1]]
+                    row_bounds.append([start_pixel, x - 1])
                     start_pixel = None
 
-            # If no end to the line was found, the line must continue to the end
             if start_pixel is not None:
-                bounds[y] = [[start_pixel, x]]
-                start_pixel = None
+                row_bounds.append([start_pixel, width - 1])
 
+            if row_bounds:
+                bounds[y] = row_bounds
         # In case no bounds were found, reduce tolerance
         tolerance -= tolerance
+
     return bounds
 
 
-def remove_bounds(item, mode="box"):
+def check_hit(_object, x, y):
+    """Checks if a point is inside a given object's rectangular bounds approximation"""
+    if not _object.visible:
+        return False
+
+    hit = (x, y)
+    a, b, c, d = standard_methods.get_rect_points(_object)
+
+    rect_area = standard_methods.get_rect_area(_object)
+
+    area_apd = standard_methods.get_triangle_area(a, hit, d)
+    area_dpc = standard_methods.get_triangle_area(d, hit, c)
+    area_cpb = standard_methods.get_triangle_area(c, hit, b)
+    area_pba = standard_methods.get_triangle_area(hit, b, a)
+
+    # If the sum of the areas of the triangles apd, dpc, cpb, and pba are less than or equal to the rectangle area, we are inside it.
+    # Generally on a hit, the sum of the area of the triangles should always be equal to the area of the triangles
+    if sum((area_apd, area_dpc, area_cpb, area_pba)) <= rect_area:
+        if _object.bounds_type != "non_standard":
+            return True
+        x, y = standard_methods.get_rel_point_rect(_object, x, y)
+        for bounds in _object.bounds[y]:
+            if bounds[0] <= x and bounds[1] >= y:
+                return True
+    return False
+
+
+def __OLD_remove_bounds(item, old_x, old_y, mode="box"):
     """Remove the bounds of a widget
 
     Args:
@@ -59,7 +92,7 @@ def remove_bounds(item, mode="box"):
         mode (str, optional): Mode to remove bounds with. Defaults to "box".
     """
 
-    x, y = standard_methods.rel_position_to_abs(item, item.x, item.y)
+    x, y = standard_methods.rel_position_to_abs(item, old_x, old_y)
 
     if mode == "box":
         for i in range(y, y + item.height):
@@ -82,7 +115,7 @@ def remove_bounds(item, mode="box"):
                             break
 
 
-def update_bounds(item, x, y, mode="box"):
+def __OLD_update_bounds(item, old_x, old_y, x, y, mode="box"):
     """Update the bounds of a widget
 
     Args:
@@ -100,7 +133,7 @@ def update_bounds(item, x, y, mode="box"):
 
     x, y = standard_methods.rel_position_to_abs(item, x, y)
     # Remove old bounds
-    remove_bounds(item, mode)
+    __OLD_remove_bounds(item, old_x, old_y, mode)
     if mode == "box":
         # Add in new bounds
         for i in range(y, y + item.height):

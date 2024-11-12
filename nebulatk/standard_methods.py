@@ -8,7 +8,7 @@ except ImportError:
     import fonts_manager
     import bounds_manager
     import colors_manager
-
+from math import sin, asin, cos, radians, sqrt
 
 # Define the names of objects
 IMAGE_OBJECTS = [
@@ -61,6 +61,10 @@ def clamp(number, minimum=0, maximum=0):
     return number
 
 
+def sign(x):
+    return (1, -1)[x < 0]
+
+
 def rel_position_to_abs(_object, x, y):
     # Add up positions for relative offsets in parent tree
     obj = _object
@@ -79,6 +83,80 @@ def abs_position_to_rel(_object, x, y):
         y -= obj.root.y
         obj = obj.root
     return x, y
+
+
+def get_line_point_rel(angle, length):
+    bx = length * sin(angle)
+    by = length * cos(angle)
+    return bx, by
+
+
+def offset_point(a, _a, _b):
+    bx = a[0] + _b
+    by = a[1] + _a
+    return bx, by
+
+
+def normalize_angle(angle):
+    return (360 + angle) % 360
+
+
+def get_rect_points(_object):
+    """Checks if a point is inside a given object's rectangular bounds approximation"""
+
+    a = rel_position_to_abs(_object, _object.x, _object.y)
+
+    # Normalize angle to be within [0, 360)
+    angle = normalize_angle(_object.orientation)
+
+    # Convert angle to radians for trigonometric functions
+    rad_angle = radians(angle)
+
+    _a, _b = get_line_point_rel(rad_angle, _object.width)
+
+    b = offset_point(a, _a, _b)
+
+    _a2, _b2 = get_line_point_rel(rad_angle, _object.height)
+
+    d = offset_point(a, _b2, -_a2)
+
+    c = offset_point(d, _a, _b)
+
+    return a, b, c, d
+
+
+def get_rel_point_rect(_object, x, y):
+    """Returns the relative point in a rectangle given a pair of absolute coordinates, and compensating for rotation"""
+    a = rel_position_to_abs(_object.x, _object.y)
+    a1 = y - a[1]
+    b1 = x - a[0]
+    signs = (sign(b1), sign(a1))
+    c = sqrt(pow(a1, 2) + pow(b1, 2))
+    if c == 0:
+        return 0, 0
+    B = asin(a1 / c)
+    A = radians(normalize_angle(_object.orientation))
+
+    A2 = A - B
+
+    bx = c * signs[0] * abs(cos(A2))
+    by = c * signs[1] * abs(sin(A2))
+
+    return bx, by
+
+
+def get_rect_area(_object):
+    return _object.width * _object.height
+
+
+def get_triangle_area(a, b, c):
+    return (
+        abs(
+            (b[0] * a[1] - a[0] * b[1])
+            + (c[0] * b[1] - b[0] * c[1] + a[0] * c[1] - c[0] * a[1])
+        )
+        / 2
+    )
 
 
 # ============================================================ FLOPS ======================================================================
@@ -152,7 +230,7 @@ def flop_on(_object):
     Args:
         _object (nebulatk.Widget): widget
     """
-    visible = "normal" if _object.visible else "hidden"
+    # visible = "normal" if _object.visible else "hidden"
     if _object.state:
         if _object.hovering:
             image_flop(_object, "hover_object_active")
@@ -338,6 +416,18 @@ def _update_position(_object, item, x, y, old_x, old_y):
         if item.find("image") != -1:
             x += _object.border_width / 2
             y += _object.border_width / 2
+        elif item.find("text") != -1:
+            if _object.justify == "center":
+                x = x + (_object.width / 2)
+
+            elif _object.justify == "left":
+                x = x
+
+            elif _object.justify == "right":
+                x = x + _object.width
+
+            # Set y offset
+            y = y + (_object.height / 2)
         _object.master.object_place(getattr(_object, item), x, y)
 
 
@@ -371,7 +461,7 @@ def place_bulk(_object, x, y):
     x, y = rel_position_to_abs(_object, x, y)
     # Only place background rectangles if there == a fill or border
     # Place slider_bg_object
-    colors = _object._colors
+    # colors = _object._colors
     state = "normal" if _object.visible else "hidden"
     """if colors["slider_fill"] is not None or (
         colors["slider_border"] is not None and _object.slider_border_width != 0
@@ -466,7 +556,7 @@ def generate_text(_object, x, y):
         fill=_object.text_color,
         anchor=anchor,
         state=state,
-        angle=_object.angle,
+        angle=_object.orientation,
     )
     if _object.active_text_color is not None:
         _object.active_text_object = _object.master.create_text(
