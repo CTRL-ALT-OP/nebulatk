@@ -62,7 +62,7 @@ def check_hit(_object, x, y):
     if not _object.visible:
         return False
 
-    hit = (x, y)
+    hit = (int(x), int(y))
     a, b, c, d = standard_methods.get_rect_points(_object)
 
     rect_area = standard_methods.get_rect_area(_object)
@@ -75,10 +75,12 @@ def check_hit(_object, x, y):
     # If the sum of the areas of the triangles apd, dpc, cpb, and pba are less than or equal to the rectangle area, we are inside it.
     # Generally on a hit, the sum of the area of the triangles should always be equal to the area of the triangles
     if sum((area_apd, area_dpc, area_cpb, area_pba)) <= rect_area:
-        if _object.bounds_type != "non_standard":
+        if _object.bounds_type != "non-standard":
             return True
         x, y = standard_methods.get_rel_point_rect(_object, x, y)
-        for bounds in _object.bounds[y]:
+        if y not in _object.bounds:
+            return False
+        for bounds in _object.bounds[int(y)]:
             if bounds[0] <= x and bounds[1] >= y:
                 return True
     return False

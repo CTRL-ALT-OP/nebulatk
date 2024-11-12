@@ -369,9 +369,9 @@ class _widget_properties:
 
     @bounds_type.setter
     def bounds_type(self, value):
+        self.bounds = []
         if value == "default":
             value = "non-standard" if self._images["image"] is not None else "box"
-
         if self._images["image"] is not None:
             if value == "non-standard":
                 self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(

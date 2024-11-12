@@ -127,7 +127,7 @@ def get_rect_points(_object):
 
 def get_rel_point_rect(_object, x, y):
     """Returns the relative point in a rectangle given a pair of absolute coordinates, and compensating for rotation"""
-    a = rel_position_to_abs(_object.x, _object.y)
+    a = rel_position_to_abs(_object, _object.x, _object.y)
     a1 = y - a[1]
     b1 = x - a[0]
     signs = (sign(b1), sign(a1))
