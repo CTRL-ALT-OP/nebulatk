@@ -2,7 +2,7 @@ import nebulatk as ntk
 import os
 import random
 import threading
-from time import sleep
+from time import sleep, time
 
 fonts = [
     "Cooper Black",
@@ -46,7 +46,7 @@ def animate(widget, target_x, target_y):
         widget.place(updated_pos[0], updated_pos[1])
 
 
-def add_text():
+def add_text_initial():
     global entry_text
     global display
     global labels
@@ -121,8 +121,8 @@ def add_text():
     lbl = ntk.Label(
         display,
         text=entry_text.get(),
-        height=height,
-        width=width,
+        height=int(height),
+        width=int(width),
         image=(image, 150, angle, (255, 255, 255)),
         font=font,
         text_color=color,
@@ -146,6 +146,191 @@ def add_text():
     last_random = True
 
 
+def add_text_ai1():
+    global entry_text, display, labels, canvas2, x, y, last_random
+
+    def get_valid_position():
+        while True:
+            position = (random.randint(0, 192) * 10, random.randint(0, 108) * 10)
+            if last_random or not labels:
+                return position
+            label_new = [
+                position[0],  # x
+                position[1],  # y
+                width + position[0],  # x2
+                height + position[1],  # y2
+            ]
+            if label_new[2] > 1920 or label_new[3] > 1080:
+                continue
+            for label in labels:
+                if (
+                    label_new[2] >= label[0]
+                    and label_new[0] <= label[2]
+                    and label_new[1] <= label[3]
+                    and label_new[3] >= label[1]
+                ):
+                    continue
+            return position
+
+    def create_label(position):
+        color = colors[random.randint(0, len(colors) - 1)]
+        angle = random.randint(-30, 30)
+        lbl = ntk.Label(
+            display,
+            text=entry_text.get(),
+            height=height,
+            width=width,
+            image=(image, 150, angle, (255, 255, 255)),
+            font=font,
+            text_color=color,
+            angle=angle,
+        )
+        lbl.place(random.randint(0, 1920), 1920 + lbl.height)
+        ntk.Label(
+            canvas2,
+            text=entry_text.get(),
+            height=height / 5,
+            width=width / 5,
+            font=(font[0], int(font[1] / 5)),
+            text_color=color,
+        ).place(position[0] / 5, position[1] / 5)
+        labels.append(
+            [position[0], position[1], position[0] + width, position[1] + height]
+        )
+        threading.Thread(target=animate, args=(lbl, position[0], position[1])).start()
+
+    font_size = random.randint(80, 100)
+    font = (fonts[random.randint(0, len(fonts) - 1)], font_size)
+    image = images[random.randint(0, len(images) - 1)]
+
+    width, height = ntk.fonts_manager.get_min_button_size(
+        entry_text.master, font=font, text=entry_text.get()
+    )
+    if width / height < 820 / 500:
+        width = (820 / 500) * height * 1.5
+        height = height * 1.5
+    else:
+        width = width * 1.5
+        height = (500 / 820) * width * 1.5
+
+    position = get_valid_position()
+    create_label(position)
+
+    x = random.randint(0, 192) * 10
+    y = random.randint(0, 108) * 10
+    last_random = True
+
+
+def add_text_ai2():
+    global entry_text, display, labels, canvas2, x, y, last_random
+
+    def random_font():
+        return (fonts[random.randint(0, len(fonts) - 1)], random.randint(80, 100))
+
+    def get_label_dimensions(font, text):
+        width, height = ntk.fonts_manager.get_min_button_size(
+            entry_text.master, font=font, text=text
+        )
+        aspect_ratio = 820 / 500
+        if width / height < aspect_ratio:
+            width = aspect_ratio * height * 1.5
+            height = height * 1.5
+        else:
+            width = width * 1.5
+            height = (500 / 820) * width * 1.5
+        return width, height
+
+    def is_valid_position(position, width, height):
+        label_new = [
+            position[0],  # x
+            position[1],  # y
+            position[0] + width,  # x2
+            position[1] + height,  # y2
+        ]
+        if label_new[2] > 1920 or label_new[3] > 1080:
+            return False
+        for label in labels:
+            if (
+                label_new[2] >= label[0]
+                and label_new[0] <= label[2]
+                and label_new[1] <= label[3]
+                and label_new[3] >= label[1]
+            ):
+                return False
+        return True
+
+    font = random_font()
+    text = entry_text.get()
+    width, height = get_label_dimensions(font, text)
+    image = images[random.randint(0, len(images) - 1)]
+    color = colors[random.randint(0, len(colors) - 1)]
+    angle = random.randint(-30, 30)
+
+    iterations = 0
+    invalid_location = True
+    while invalid_location and iterations < 100:
+        position = (
+            (random.randint(0, 192) * 10, random.randint(0, 108) * 10)
+            if last_random
+            else (x, y)
+        )
+        invalid_location = not is_valid_position(position, width, height)
+        iterations += 1
+        if invalid_location:
+            font_size = font[1] - 5
+            font = (font[0], font_size)
+            width, height = get_label_dimensions(font, text)
+            iterations = 0
+
+    lbl = ntk.Label(
+        display,
+        text=text,
+        height=height,
+        width=width,
+        image=(image, 150, angle, (255, 255, 255)),
+        font=font,
+        text_color=color,
+        angle=angle,
+    )
+    lbl.place(random.randint(0, 1920), 1920 + lbl.height)
+
+    mini_lbl = ntk.Label(
+        canvas2,
+        text=text,
+        height=height / 5,
+        width=width / 5,
+        font=(font[0], int(font[1] / 5)),
+        text_color=color,
+    )
+    mini_lbl.place(position[0] / 5, position[1] / 5)
+
+    labels.append([position[0], position[1], position[0] + width, position[1] + height])
+    threading.Thread(target=animate, args=(lbl, position[0], position[1])).start()
+
+    x = random.randint(0, 192) * 10
+    y = random.randint(0, 108) * 10
+    last_random = True
+
+
+def add_text():
+    time1 = time()
+    add_text_initial()
+    print("1 ended in ", time() - time1, labels)
+
+    time2 = time()
+    entry_text.typed("1")
+    add_text_ai1()
+    print("2 ended in ", time() - time2, labels)
+
+    time3 = time()
+    entry_text.typed("2")
+    add_text_ai2()
+    print("3 ended in ", time() - time3, labels)
+
+    entry_text.typed("\x08")
+    entry_text.typed("\x08")
+
+
 # NOTE: EXAMPLE WINDOW
 def __main__():
     for file in os.listdir("Fonts"):
@@ -159,7 +344,7 @@ def __main__():
     y = random.randint(0, 108) * 10
 
     global display
-    display = ntk.Window(1920, 1080, resizable=False, override=True).place(1920)
+    display = ntk.Window(1920, 1080, resizable=False, override=True)  # .place(1920)
     entry = ntk.Window(384, 50 + 216, resizable=False, closing_command=display.close)
 
     global entry_text

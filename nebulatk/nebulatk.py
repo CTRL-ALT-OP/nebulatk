@@ -16,7 +16,6 @@ try:
         fonts_manager,
         colors_manager,
         image_manager,
-        initialize,
         standard_methods,
         defaults,
     )
@@ -25,7 +24,6 @@ except ImportError:
     import fonts_manager
     import colors_manager
     import image_manager
-    import initialize
     import standard_methods
     import defaults
 
@@ -497,7 +495,7 @@ class _widget(_widget_properties):
     def __initialize_text(self, text, font, justify, text_color, active_text_color):
         # print("hit", type(self), text_color)
         self.text = text
-        self._entire_text = text
+        self.entire_text = text
 
         self.font = font
 
@@ -602,7 +600,33 @@ class _widget(_widget_properties):
         self.root.master.children.remove(self)
 
     def typed(self, character):
-        pass
+        if not self.can_type:
+            return
+        # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the displayed slice of self.entire_text
+        # Backspace character
+        if character == "\x08":
+            self.entire_text = self.entire_text[:-1]
+
+        # If the character is a visible character
+        elif character in fonts_manager.ALPHANUMERIC_PLUS:
+            self.entire_text = self.entire_text + character
+
+        # Move end of display to the end of the text
+        self.end = len(self.entire_text)
+
+        # Get maximum length of characters we can fit in the widget
+        max_length = fonts_manager.get_max_length(
+            self.master, self.entire_text, self.font, self.width, self.end
+        )
+
+        # Configure display text to be the slice of text that we can fit in the widget
+        if self.text_object is not None:
+            self.configure(
+                text=self.entire_text[self.end - max_length : self.end],
+            )
+        else:
+            self.text = self.entire_text[self.end - max_length : self.end]
+            self.update()
 
     def change_active(self):
         pass
@@ -969,6 +993,7 @@ class Entry(_widget):
         root=None,
         width=0,
         height=0,
+        orientation=0,
         text="",
         font=None,
         justify="center",
@@ -991,64 +1016,26 @@ class Entry(_widget):
             border (str, optional): Border color. Defaults to "black".
             border_width (int, optional): Border width. Defaults to 3.
             image (str, optional): Image path. Defaults to None.
-            bounds_type (str, optional): Defaults to "box" if image is not provided, or "nonstandard" otherwise.
+            bounds_type (str, optional): _description_. Defaults to "box" if image is not provided, or "nonstandard" otherwise. Defaults to "box" if no image == provided, or "non-standard" if an image == provided.
         """
-        # Load most initial variables
-        initialize.load_initial(
-            self,
-            root,
-            width,
-            height,
-            border_width,
-            justify,
+        super().__init__(
+            root=root,
+            width=width,
+            height=height,
+            orientation=orientation,
+            text=text,
+            font=font,
+            justify=justify,
+            border=border,
+            text_color=text_color,
+            fill=fill,
+            border_width=border_width,
+            image=image,
+            bounds_type=bounds_type,
         )
-
-        # Load our bounds type
-        initialize.load_bounds_type(self, bounds_type, image)
-
-        # Load all of our images
-        initialize.load_bulk_images(self, image=image)
-
-        # Load and initialize our text and font
-        initialize.load_text(self, text, font)
-
-        # Load all of our colors
-        initialize.load_all_colors(
-            self, fill=fill, border=border, text_color=text_color
-        )
-
-        # Convert all of our colors to hexadecimal
-        initialize.convert_all_colors(self)
-
-    def clicked(self):
-        self.active = True
-
-    def typed(self, character):
-        # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the displayed slice of self.entire_text
-        # Backspace character
-        if character == "\x08":
-            self.entire_text = self.entire_text[:-1]
-
-        # If the character is a visible character
-        elif character in fonts_manager.ALPHANUMERIC_PLUS:
-            self.entire_text = self.entire_text + character
-
-        # Move end of display to the end of the text
-        self.end = len(self.entire_text)
-
-        # Get maximum length of characters we can fit in the widget
-        max_length = fonts_manager.get_max_length(
-            self.master, self.entire_text, self.font, self.width, self.end
-        )
-
-        # Configure display text to be the slice of text that we can fit in the widget
-        if self.text_object is not None:
-            self.configure(
-                text=self.entire_text[self.end - max_length : self.end],
-            )
-        else:
-            self.text = self.entire_text[self.end - max_length : self.end]
-            self.update()
+        self.can_hover = False
+        self.can_click = False
+        self.can_type = True
 
     def get(self):
         return self.entire_text
@@ -1528,6 +1515,14 @@ def __main__():
         slider_border_width=2,
         slider_fill="#ffaaaa",
     ).place(100, 100)
+
+    Entry(
+        canvas,
+        text="hi",
+        font=("Helvetica", 50),
+        fill=[255, 67, 67, 45],
+        border_width=2,
+    ).place(0, 400).place(200, 400)
     # ImageButton(canvas,image="Images/test_inactive.png",active_image="Images/test_active.png").place(0,0)
     # btn_4 = Button(canvas,15,15,text="hahah").place(15,15)
     # btn_4.place(50,60)
