@@ -20,10 +20,10 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
         raise TypeError("Input image must be a PIL Image object.")
 
     width, height = image.size
-    threshold = round(tolerance * 255)
 
+    threshold = round(tolerance * 255)
     bounds = {}
-    while not bounds and tolerance >= 0:
+    while not bounds and threshold >= 0:
         # Optimized pixel access using getdata()
         pixels = list(image.getdata())
         for y in range(height):
@@ -52,13 +52,15 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
             if row_bounds:
                 bounds[y] = row_bounds
         # In case no bounds were found, reduce tolerance
-        tolerance -= tolerance
+        threshold -= 10
 
     return bounds
 
 
 def check_hit(_object, x, y):
     """Checks if a point is inside a given object's rectangular bounds approximation"""
+    if not _object.initialized:
+        return False
     if not _object.visible:
         return False
 
