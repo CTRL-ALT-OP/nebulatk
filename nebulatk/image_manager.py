@@ -70,6 +70,7 @@ class Image:
             self.image = self.image.transpose(pil.FLIP_LEFT_RIGHT)
         elif direction == "vertical":
             self.image = self.image.transpose(pil.FLIP_TOP_BOTTOM)
+        return self
 
     def rotate(self, angle):
         self.tk_images = {}
