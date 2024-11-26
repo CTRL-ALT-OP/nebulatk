@@ -434,7 +434,7 @@ class _widget(_widget_properties):
         active_hover_image: image_manager.Image = None,
         # Bound Variables
         bounds_type: str = "default",
-        custom_bounds: list | tuple = None,
+        custom_bounds: list = None,
         # Commands
         command=None,
         command_off=None,
@@ -764,7 +764,7 @@ class Button(_widget):
         active_hover_image: image_manager.Image = None,
         # Bound Variables
         bounds_type: str = "default",
-        custom_bounds: list | tuple = None,
+        custom_bounds: list = None,
         # Commands
         command=None,
         command_off=None,
@@ -842,7 +842,7 @@ class Slider(_widget):
         slider_active_hover_image: image_manager.Image = None,
         # Bound Variables
         slider_bounds_type: str = "default",
-        slider_custom_bounds: list | tuple = None,
+        slider_custom_bounds: list = None,
     ):
         """Slider widget
 

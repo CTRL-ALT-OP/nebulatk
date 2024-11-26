@@ -94,7 +94,7 @@ class Color(str):
     def __eq__(self, other):
         return self.color == other
 
-    def startswith(self, prefix: str | tuple[str, ...]) -> bool:
+    def startswith(self, prefix) -> bool:
         return self.color.startswith(prefix)
 
 

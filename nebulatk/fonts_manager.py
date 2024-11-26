@@ -13,8 +13,8 @@ FR_NOT_ENUM = 0x20
 
 
 class Font:
-    def __init__(self, font: str | list | tuple):
-        if font in ("default", None):
+    def __init__(self, font: str):
+        if font in {"default", None}:
             # Default font
             self.font = ("Helvetica", -1)
 
