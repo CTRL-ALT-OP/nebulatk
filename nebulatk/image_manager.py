@@ -9,14 +9,28 @@ except ImportError:
 
 
 class Image:
-    def __init__(self, path, _object=None, image=None):
+    def __init__(self, image, _object=None):
         self.image = None
         self.tk_images = {}
         self.bounds = []
 
-        if path is not None:
+        if type(image) == Image:
+            self.image = image.image
+
+            if _object is not None:
+                # Resize image if size isn't specified
+                if _object.width != 0 and _object.height != 0:
+                    self.resize(
+                        _object.width - (_object.border_width * 2),
+                        _object.height - (_object.border_width * 2),
+                    )
+
+                # Convert image for tkinter
+                self.tk_images[_object.master] = convert_image(_object, self.image)
+
+        elif type(image) == str:
             # Open image
-            self.image = pil.open(path)
+            self.image = pil.open(image)
             if _object is not None:
                 # Resize image if size isn't specified
                 if _object.width != 0 and _object.height != 0:
@@ -140,5 +154,5 @@ def create_image(fill, width, height, border, border_width, master):
     image1.rectangle(shape, fill=fill, outline=border, width=border_width)
 
     # Convert image
-    image = Image(None, master, image)
+    image = Image(image, master)
     return image

@@ -80,8 +80,9 @@ def check_hit(_object, x, y):
         x, y = standard_methods.get_rel_point_rect(_object, x, y)
         if y not in _object.bounds:
             return False
-        for bounds in _object.bounds[int(y)]:
-            if bounds[0] <= x and bounds[1] >= y:
+
+        for bounds in _object.bounds[y]:
+            if bounds[0] <= x and bounds[1] >= x:
                 return True
     return False
 

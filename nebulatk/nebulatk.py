@@ -77,7 +77,11 @@ class _widget_properties:
         return color
 
     def __convert_image(self, image):
-        return image_manager.Image(image, self) if type(image) is str else image
+        return (
+            image_manager.Image(image, self)
+            if type(image) in (str, image_manager.Image)
+            else image
+        )
 
     @property
     def root(self):
@@ -1204,6 +1208,8 @@ class _window_internal(threading.Thread):
             (child for child in self.children if bounds_manager.check_hit(child, x, y)),
             None,
         )
+        global btn
+        print(hovered_new, bounds_manager.check_hit(btn, x, y))
 
         if hovered_new is not self.hovered:
             hovered_new.hovered()
@@ -1487,18 +1493,25 @@ def __main__():
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
-    Button(
-        canvas,
-        text="hillo",
-        image="examples/Images/main_button_inactive.png",
-        active_image="examples/Images/main_button_inactive2.png",
-        hover_image="examples/Images/main_button_active.png",
-        active_hover_image="examples/Images/main_button_active2.png",
-        width=100,
-        height=100,
-        mode="toggle",
-        border_width=2,
-    ).place(0, 0).place(100, 100)
+    img = image_manager.Image("examples/Images/main_button_inactive.png")
+    global btn
+    btn = (
+        Button(
+            canvas,
+            text="hillo",
+            image=img,
+            active_image="examples/Images/main_button_inactive2.png",
+            hover_image="examples/Images/main_button_active.png",
+            active_hover_image="examples/Images/main_button_active2.png",
+            width=300,
+            height=300,
+            mode="toggle",
+            border_width=2,
+        )
+        .place(0, 0)
+        .place(100, 100)
+    )
+    print(btn.bounds)
     Button(
         canvas,
         text="hi",

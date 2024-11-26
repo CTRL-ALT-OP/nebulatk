@@ -142,7 +142,7 @@ def get_rel_point_rect(_object, x, y):
     bx = c * signs[0] * abs(cos(A2))
     by = c * signs[1] * abs(sin(A2))
 
-    return bx, by
+    return int(round(bx)), int(round(by))
 
 
 def get_rect_area(_object):
