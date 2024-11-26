@@ -801,7 +801,6 @@ class Button(_widget):
             mode,
             state,
         )
-
         self.can_hover = True
         self.can_click = True
         self.can_type = False
@@ -1275,7 +1274,7 @@ class _window_internal(threading.Thread):
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
         if fill is not None and len(fill) > 7:
             bg_image = image_manager.create_image(
-                fill, widt, height, outline, border_width, self
+                fill, widt - x, height - x, outline, border_width, self
             )
             self.images.append(bg_image)
             return self.create_image(x, y, bg_image, state=state)
@@ -1493,22 +1492,20 @@ def __main__():
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
     img = image_manager.Image("examples/Images/main_button_inactive.png")
     global btn
-    btn = (
-        Button(
-            canvas,
-            text="hillo",
-            image=img,
-            active_image="examples/Images/main_button_inactive2.png",
-            hover_image="examples/Images/main_button_active.png",
-            active_hover_image="examples/Images/main_button_active2.png",
-            width=300,
-            height=300,
-            mode="toggle",
-            border_width=2,
-        )
-        .place(0, 0)
-        .place(100, 100)
+    btn = Button(
+        canvas,
+        text="hillo",
+        image=img,
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
+        width=300,
+        height=300,
+        mode="toggle",
+        border_width=2,
     )
+    btn.place(0, 0)
+    btn.place(100, 100)
     Button(
         canvas,
         text="hi",
