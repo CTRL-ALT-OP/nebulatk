@@ -4,8 +4,12 @@ from PIL import ImageDraw as pildraw
 
 try:
     from . import bounds_manager
+    from . import standard_methods
+    from . import colors_manager
 except ImportError:
     import bounds_manager
+    import standard_methods
+    import colors_manager
 
 
 class Image:
@@ -58,6 +62,53 @@ class Image:
                 ),
                 pil.NEAREST,
             )
+        return self
+
+    def flip(self, direction="horizontal"):
+        self.tk_images = {}
+        if direction == "horizontal":
+            self.image = self.image.transpose(pil.FLIP_LEFT_RIGHT)
+        elif direction == "vertical":
+            self.image = self.image.transpose(pil.FLIP_TOP_BOTTOM)
+
+    def rotate(self, angle):
+        self.tk_images = {}
+        pil_img = self.image.rotate(angle, expand=True)
+        self.image = pil_img
+        return self
+
+    def recolor(self, color):
+        self.tk_images = {}
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+
+        color = colors_manager.Color(color)
+        color = color.rgba
+        new_data = [
+            (
+                *color[:3],
+                standard_methods.clamp(data[i][3] - (255 - color[3]), 0, 255),
+            )
+            for i in range(len(data) - 1)
+        ]
+        pil_img.putdata(new_data)
+        self.image = pil_img
+        return self
+
+    def set_transparency(self, transparency):
+        self.tk_images = {}
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+        new_data = [
+            (
+                *data[i][:3],
+                standard_methods.clamp(data[i][3] - transparency, 0, 255),
+            )
+            for i in range(len(data) - 1)
+        ]
+        pil_img.putdata(new_data)
+        self.image = pil_img
+        return self
 
     def tk_image(self, _object):
         if _object.master not in self.tk_images:
