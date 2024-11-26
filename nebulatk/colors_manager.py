@@ -163,10 +163,10 @@ def convert_to_rgb(color):
             return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4, 6))
 
         # Else convert to hex string with 3 channels
-        return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
+        return (*(int(color[i : i + 2], 16) for i in (0, 2, 4)), 255)
 
     elif type(color) in (list, tuple):
-        color = tuple(color)
+        color = (*color, 255) if len(color) < 4 else tuple(color)
         return color
 
 
