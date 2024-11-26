@@ -1208,8 +1208,6 @@ class _window_internal(threading.Thread):
             (child for child in self.children if bounds_manager.check_hit(child, x, y)),
             None,
         )
-        global btn
-        print(hovered_new, bounds_manager.check_hit(btn, x, y))
 
         if hovered_new is not self.hovered:
             hovered_new.hovered()
@@ -1511,7 +1509,6 @@ def __main__():
         .place(0, 0)
         .place(100, 100)
     )
-    print(btn.bounds)
     Button(
         canvas,
         text="hi",
