@@ -1491,21 +1491,47 @@ def __main__():
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
     img = image_manager.Image("examples/Images/main_button_inactive.png")
-    global btn
     btn = Button(
         canvas,
-        text="hillo",
         image=img,
         active_image="examples/Images/main_button_inactive2.png",
         hover_image="examples/Images/main_button_active.png",
         active_hover_image="examples/Images/main_button_active2.png",
-        width=300,
-        height=300,
+        width=100,
+        height=100,
         mode="toggle",
         border_width=2,
     )
     btn.place(0, 0)
-    btn.place(100, 100)
+    btn.place(100, 200)
+    img.flip()
+    btn = Button(
+        canvas,
+        image=img,
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
+        width=100,
+        height=100,
+        mode="toggle",
+        border_width=2,
+    )
+    btn.place(0, 0)
+    btn.place(200, 200)
+    img.flip().flip("vertical")
+    btn = Button(
+        canvas,
+        image=img,
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
+        width=100,
+        height=100,
+        mode="toggle",
+        border_width=2,
+    )
+    btn.place(0, 0)
+    btn.place(300, 200)
     Button(
         canvas,
         text="hi",
