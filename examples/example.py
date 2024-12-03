@@ -1,9 +1,13 @@
-from .. import nebulatk as ntk
+import nebulatk as ntk
+
+ntk.animation_controller
 
 
 def __main__():
     canvas = ntk.Window()
-    ntk.Frame(canvas, image="Images/background.png", width=500, height=500).place(0, 0)
+    ntk.Frame(
+        canvas, image="examples/Images/background.png", width=500, height=500
+    ).place(0, 0)
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
     # Button(canvas,text="hihih", font = ("Helvetica",36)).place(100,100)
@@ -11,10 +15,12 @@ def __main__():
         canvas,
         text="hillo",
         fill=[255, 66, 66, 15],
-        image="Images/main_button_inactive.png",
-        active_image="Images/main_button_inactive2.png",
-        hover_image="Images/main_button_active.png",
-        hover_image_active="Images/main_button_active2.png",
+        width=100,
+        height=100,
+        image="examples/Images/main_button_inactive.png",
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
         mode="toggle",
     ).place(0, 0)
     ntk.Button(

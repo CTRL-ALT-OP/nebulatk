@@ -1208,7 +1208,7 @@ class _window_internal(threading.Thread):
             None,
         )
 
-        if hovered_new is not self.hovered:
+        if hovered_new is not self.hovered and hovered_new is not None:
             hovered_new.hovered()
         """
         # Find the object that was hovered over
@@ -1335,6 +1335,7 @@ class _window_internal(threading.Thread):
         self.running = False
         try:
             self.root.update()
+            self.root.quit()
             self.join()
         except Exception as e:
             print(e)
@@ -1483,7 +1484,7 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window()
+    canvas = Window(title="window", width=800, height=500).place(400, 300)
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )
@@ -1538,7 +1539,7 @@ def __main__():
         font=("Helvetica", 50),
         fill=[255, 67, 67, 45],
         border_width=2,
-    ).place(0, 400).place(100, 400)
+    ).place(0, 400).place(100, 400).text = "hello"
     Slider(
         canvas,
         width=100,
@@ -1561,6 +1562,7 @@ def __main__():
     # btn_4.place(50,60)
 
     # Frame(canvas,30,30, border = "green").place(160,80)
+    canvas.destroy()
 
 
 if __name__ == "__main__":
