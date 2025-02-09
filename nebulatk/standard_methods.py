@@ -260,17 +260,40 @@ def flop_on(_object):
 # ------------------------------------------------------------ DELETION BEHAVIOUR -----------------------------------------------------------
 
 
-def delete(_object):
+def delete(_object, delayed=False):
     """Widget deletion behaviour
 
     Args:
         _object (nebulatk.Widget): widget
     """
     # Iterate through all items in the widget and delete them if they exist
+    if delayed and _object._scheduled_deletion != []:
+        for obj in _object._scheduled_deletion:
+            _object.master.delete(obj)
+        _object._scheduled_deletion = []
+        return
+
     for obj in ALL_OBJECTS:
         if check(_object, obj):
-            _object.master.delete(getattr(_object, obj))
+            if delayed:
+                _object._scheduled_deletion.append(getattr(_object, obj))
+            else:
+                _object.master.delete(getattr(_object, obj))
             setattr(_object, obj, None)
+
+
+# ------------------------------------------------------------ DELETION SCHEDULING BEHAVIOUR -----------------------------------------------
+def schedule_delete(_object):
+    for obj in ALL_OBJECTS:
+        if check(_object, obj):
+            _object._scheduled_deletion.append(getattr(_object, obj))
+            setattr(_object, obj, None)
+
+
+def delete_scheduled(_object):
+    for obj in _object._scheduled_deletion:
+        _object.master.delete(obj)
+    _object._scheduled_deletion = []
 
 
 # ------------------------------------------------------------ HOVERING BEHAVIOUR -----------------------------------------------------------
@@ -480,7 +503,7 @@ def place_bulk(_object, x, y):
     if _object.fill is not None or (
         _object.border is not None and _object.border_width != 0
     ):
-        _object.bg_object = _object.master.create_rectangle(
+        _object.bg_object, img = _object.master.create_rectangle(
             x,
             y,
             x + _object.width,
@@ -490,10 +513,11 @@ def place_bulk(_object, x, y):
             outline=_object.border,
             state=state,
         )
+        _object._images_initialized["bg_object"] = img
 
     # Place bg_object_active
     if _object.active_fill is not None:
-        _object.bg_object_active = _object.master.create_rectangle(
+        _object.bg_object_active, img = _object.master.create_rectangle(
             x,
             y,
             x + _object.width,
@@ -503,6 +527,7 @@ def place_bulk(_object, x, y):
             outline=_object.border,
             state="hidden",
         )
+        _object._images_initialized["bg_object_active"] = img
 
     # Place images
     for img in ["image", "active_image", "hover_image", "active_hover_image"]:
@@ -514,16 +539,18 @@ def place_bulk(_object, x, y):
             if img == "active_hover_image":
                 img_object = "hover_object_active"
 
+            id, image = _object.master.create_image(
+                x + _object.border_width,
+                y + _object.border_width,
+                getattr(_object, img),
+                state=state,
+            )
             setattr(
                 _object,
                 img_object,
-                _object.master.create_image(
-                    x + _object.border_width,
-                    y + _object.border_width,
-                    getattr(_object, img),
-                    state=state,
-                ),
+                id,
             )
+            _object._images_initialized[img] = image
 
     # Place text objects
     if _object.text != "":

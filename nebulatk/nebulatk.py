@@ -1,5 +1,4 @@
 # Import tkinter and filedialog
-import sys
 import threading
 import tkinter as tk
 
@@ -98,7 +97,7 @@ class _widget_properties:
         self.master = root.master
         self.children = []
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -109,7 +108,7 @@ class _widget_properties:
     def width(self, width):
         self._size[0] = width
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self._configure_size(self._size)
 
     @property
@@ -120,7 +119,7 @@ class _widget_properties:
     def height(self, height):
         self._size[1] = height
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self._configure_size(self._size)
 
     @property
@@ -131,7 +130,7 @@ class _widget_properties:
     def x(self, x):
         self._position[0] = x
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self._configure_position(self._position)
 
     @property
@@ -142,7 +141,7 @@ class _widget_properties:
     def y(self, y):
         self._position[1] = y
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self._configure_position(self._position)
 
     @property
@@ -153,7 +152,7 @@ class _widget_properties:
     def orientation(self, value):
         self._orientation = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -164,7 +163,7 @@ class _widget_properties:
     def text(self, text):
         self._text = text
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self._configure_text(self._text)
 
     @property
@@ -200,7 +199,7 @@ class _widget_properties:
 
         self._font = font
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -211,7 +210,7 @@ class _widget_properties:
     def justify(self, value):
         self._justify = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -223,7 +222,7 @@ class _widget_properties:
         value = self.__synthesize_color("text_color", value, self._no_image)
         self._colors["text_color"] = value
         # print(self._colors)
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -235,7 +234,7 @@ class _widget_properties:
         value = self.__synthesize_color("active_text_color", value, self._no_image)
         self._colors["active_text_color"] = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -247,7 +246,7 @@ class _widget_properties:
         fill = self.__synthesize_color("fill", value, self._no_image)
         self._colors["fill"] = fill
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -259,7 +258,7 @@ class _widget_properties:
         active_fill = self.__synthesize_color("active_fill", value, self._no_image)
         self._colors["active_fill"] = active_fill
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -271,7 +270,7 @@ class _widget_properties:
         hover_fill = self.__synthesize_color("hover_fill", value, self._no_image)
         self._colors["hover_fill"] = hover_fill
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -285,7 +284,7 @@ class _widget_properties:
         )
         self._colors["active_hover_fill"] = active_hover_fill
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -297,7 +296,7 @@ class _widget_properties:
         border = self.__synthesize_color("border", value, self._no_image)
         self._colors["border"] = border
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -310,7 +309,7 @@ class _widget_properties:
             value = 0
         self._border_width = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -323,7 +322,7 @@ class _widget_properties:
 
         self._images["image"] = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -336,7 +335,7 @@ class _widget_properties:
 
         self._images["active_image"] = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -349,7 +348,7 @@ class _widget_properties:
 
         self._images["hover_image"] = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -362,7 +361,7 @@ class _widget_properties:
 
         self._images["active_hover_image"] = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -391,7 +390,7 @@ class _widget_properties:
 
         self._bounds_type = value
 
-        if self.initialized:
+        if self.initialized and self.master.updates_all:
             self.update()
 
     @property
@@ -461,6 +460,10 @@ class _widget(_widget_properties):
         self.__initialize_trigger(mode, state)
 
         self.initialized = True
+
+        self._images_initialized = {}
+
+        self._scheduled_deletion = []
 
     def __initialize_general(self, root, width, height, orientation):
         self.initialized = False
@@ -710,8 +713,9 @@ class _widget(_widget_properties):
         return self
 
     def update(self):
-        standard_methods.delete(self)
+        standard_methods.schedule_delete(self)
         self.place(self.x, self.y)
+        standard_methods.delete_scheduled(self)
 
     def _configure_size(self, size):
         self.update()
@@ -732,6 +736,8 @@ class _widget(_widget_properties):
         """Configure the widget with the specified parameters"""
         for k, v in kwargs.items():
             setattr(self, k, v)
+        if not self.master.updates_all:
+            self.update()
         return self
 
 
@@ -1121,6 +1127,9 @@ class _window_internal(threading.Thread):
         self.height = int(height)
         self.resizable = resizable
         self.override = override
+        self.updates_all = (
+            False  # Whether updates to members update the widget automatically
+        )
 
         self.children = []
 
@@ -1136,7 +1145,7 @@ class _window_internal(threading.Thread):
         self.canvas_height = canvas_height
 
         # Because of threading and garbage collection, images created will sometimes have to be stored in this variable to ensure they do not get deleted
-        self.images = []
+        self.images = {}
 
         # Initialize rest of variables
         self.running = True
@@ -1262,48 +1271,56 @@ class _window_internal(threading.Thread):
 
     # Wrapper for canvas.create_image method
     def create_image(self, x, y, image, state="normal"):
-        self.images.append(image)
-        return self.canvas.create_image(
+        img = self.canvas.create_image(
             x, y, image=image.tk_image(self), anchor="nw", state=state
         )
+        return img, image
 
     # Wrapper for canvas.create_rectangle method
     def create_rectangle(
         self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
     ):
+        if x == widt or y == height:
+            return None, None
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
         if fill is not None and len(fill) > 7:
             bg_image = image_manager.create_image(
                 fill, widt - x, height - y, outline, border_width, self
             )
-            self.images.append(bg_image)
-            return self.create_image(x, y, bg_image, state=state)
+            id, image = self.create_image(x, y, bg_image, state=state)
+            return id, image
 
         # Otherwise we can continue with creating the rectangle
-        return self.canvas.create_rectangle(
-            x + border_width / 2,
-            y + border_width / 2,
-            widt - border_width / 2,
-            height - border_width / 2,
-            fill=fill,
-            width=border_width,
-            outline=outline,
-            state=state,
+        return (
+            self.canvas.create_rectangle(
+                x + border_width / 2,
+                y + border_width / 2,
+                widt - border_width / 2,
+                height - border_width / 2,
+                fill=fill,
+                width=border_width,
+                outline=outline,
+                state=state,
+            ),
+            None,
         )
 
     # Wrapper for canvas.create_text method
     def create_text(
         self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
-        return self.canvas.create_text(
-            x,
-            y,
-            text=text,
-            font=font,
-            fill=fill,
-            anchor=anchor,
-            state=state,
-            angle=angle,
+        return (
+            self.canvas.create_text(
+                x,
+                y,
+                text=text,
+                font=font,
+                fill=fill,
+                anchor=anchor,
+                state=state,
+                angle=angle,
+            ),
+            None,
         )
 
     # Wrapper for canvas.move method
@@ -1395,8 +1412,9 @@ class _window_internal(threading.Thread):
 
         # Run mainloop
         self.root.mainloop()
-        print("exited")
-        # NOTE: The following code == an alternative, but broken, method of running mainloop
+
+        # print("exited")
+        # NOTE: The following code is an alternative, but broken, method of running mainloop
         """while self.running:
             self.root.update_idletasks()
             self.root.update()
@@ -1406,7 +1424,7 @@ class _window_internal(threading.Thread):
 def Window(
     width=500,
     height=500,
-    title="ntk",
+    title=None,
     canvas_width="default",
     canvas_height="default",
     closing_command=None,
@@ -1418,6 +1436,7 @@ def Window(
     Args:
         width (int, optional): Width. Defaults to 500.
         height (int, optional): Height. Defaults to 500.
+        title (str, optional): Title. Defaults to ntk.
         canvas_width (str, optional): Canvas width. Defaults to width.
         canvas_height (str, optional): Canvas height. Defaults to height.
         closing_command (function, optional): Command to execute on close. Defaults to sys.exit.
@@ -1430,6 +1449,9 @@ def Window(
 
     if type(resizable) is bool:
         resizable = (resizable, resizable)
+
+    if title is None:
+        title = "ntk"
 
     canvas = _window_internal(
         width,
@@ -1484,7 +1506,7 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window(title="window", width=800, height=500).place(400, 300)
+    canvas = Window(title=None, width=800, height=500).place(400, 300)
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )

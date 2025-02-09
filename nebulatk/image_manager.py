@@ -3,11 +3,9 @@ from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
 try:
-    from . import bounds_manager
     from . import standard_methods
     from . import colors_manager
 except ImportError:
-    import bounds_manager
     import standard_methods
     import colors_manager
 
@@ -18,7 +16,7 @@ class Image:
         self.tk_images = {}
         self.bounds = []
 
-        if type(image) == Image:
+        if type(image) is Image:
             self.image = image.image
 
             if _object is not None:
@@ -32,7 +30,7 @@ class Image:
                 # Convert image for tkinter
                 self.tk_images[_object.master] = convert_image(_object, self.image)
 
-        elif type(image) == str:
+        elif type(image) is str:
             # Open image
             self.image = pil.open(image)
             if _object is not None:
@@ -92,9 +90,7 @@ class Image:
             )
             for i in range(len(data) - 1)
         ]
-        pil_img.putdata(new_data)
-        self.image = pil_img
-        return self
+        return self._update_pil_data(pil_img, new_data)
 
     def set_transparency(self, transparency):
         self.tk_images = {}
@@ -107,6 +103,9 @@ class Image:
             )
             for i in range(len(data) - 1)
         ]
+        return self._update_pil_data(pil_img, new_data)
+
+    def _update_pil_data(self, pil_img, new_data):
         pil_img.putdata(new_data)
         self.image = pil_img
         return self
@@ -197,7 +196,6 @@ def create_image(fill, width, height, border, border_width, master):
     """
     # Create base image
     image = pil.new("RGBA", (width, height), (0, 0, 0, 255))
-
     # Generate corners of rectangle (0-indexed)
     shape = [(0, 0), (width - 1, height - 1)]
 
