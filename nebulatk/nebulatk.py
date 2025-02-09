@@ -1395,7 +1395,7 @@ class _window_internal(threading.Thread):
 
         # Run mainloop
         self.root.mainloop()
-
+        print("exited")
         # NOTE: The following code == an alternative, but broken, method of running mainloop
         """while self.running:
             self.root.update_idletasks()
@@ -1409,7 +1409,7 @@ def Window(
     title="ntk",
     canvas_width="default",
     canvas_height="default",
-    closing_command=sys.exit,
+    closing_command=None,
     resizable=(True, True),
     override=False,
 ):
@@ -1562,7 +1562,8 @@ def __main__():
     # btn_4.place(50,60)
 
     # Frame(canvas,30,30, border = "green").place(160,80)
-    canvas.destroy()
+    print(canvas.children)
+    # canvas.destroy()
 
 
 if __name__ == "__main__":
