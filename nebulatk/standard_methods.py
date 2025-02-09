@@ -575,7 +575,7 @@ def generate_text(_object, x, y):
     # Set y offset
     local_y = y + (_object.height / 2)
 
-    _object.text_object = _object.master.create_text(
+    _object.text_object, img = _object.master.create_text(
         local_x,
         local_y,
         text=_object.text,
@@ -586,7 +586,7 @@ def generate_text(_object, x, y):
         angle=_object.orientation,
     )
     if _object.active_text_color is not None:
-        _object.active_text_object = _object.master.create_text(
+        _object.active_text_object, img = _object.master.create_text(
             local_x,
             local_y,
             text=_object.text,

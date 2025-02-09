@@ -1555,13 +1555,19 @@ def __main__():
     )
     btn.place(0, 0)
     btn.place(300, 200)
-    Button(
-        canvas,
-        text="hi",
-        font=("Helvetica", 50),
-        fill=[255, 67, 67, 45],
-        border_width=2,
-    ).place(0, 400).place(100, 400).text = "hello"
+    btn = (
+        Button(
+            canvas,
+            text="hi",
+            font=("Helvetica", 50),
+            fill=[255, 67, 67, 45],
+            border_width=2,
+        )
+        .place(0, 400)
+        .place(100, 400)
+    )
+    btn.text = "hello"
+    btn.update()
     Slider(
         canvas,
         width=100,
