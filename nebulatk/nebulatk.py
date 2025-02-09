@@ -1274,7 +1274,7 @@ class _window_internal(threading.Thread):
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
         if fill is not None and len(fill) > 7:
             bg_image = image_manager.create_image(
-                fill, widt - x, height - x, outline, border_width, self
+                fill, widt - x, height - y, outline, border_width, self
             )
             self.images.append(bg_image)
             return self.create_image(x, y, bg_image, state=state)
