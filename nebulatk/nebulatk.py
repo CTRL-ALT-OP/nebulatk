@@ -1527,15 +1527,15 @@ def __main__():
     )
     btn.place(0, 0)
     btn.place(100, 200)
-    img.flip()
+    img.set_relative_transparency2(100, "quad")
     btn = Button(
         canvas,
         image=img,
         active_image="examples/Images/main_button_inactive2.png",
         hover_image="examples/Images/main_button_active.png",
         active_hover_image="examples/Images/main_button_active2.png",
-        width=100,
-        height=100,
+        width=300,
+        height=300,
         mode="toggle",
         border_width=2,
     )

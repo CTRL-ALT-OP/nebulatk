@@ -2,6 +2,8 @@ from PIL import Image as pil
 from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
+import math
+
 try:
     from . import standard_methods
     from . import colors_manager
@@ -99,10 +101,55 @@ class Image:
         new_data = [
             (
                 *data[i][:3],
+                standard_methods.clamp(transparency, 0, 255),
+            )
+            for i in range(len(data) - 1)
+        ]
+        return self._update_pil_data(pil_img, new_data)
+
+    def increment_transparency(self, transparency):
+        self.tk_images = {}
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+        new_data = [
+            (
+                *data[i][:3],
                 standard_methods.clamp(data[i][3] - transparency, 0, 255),
             )
             for i in range(len(data) - 1)
         ]
+        return self._update_pil_data(pil_img, new_data)
+
+    def set_relative_transparency(self, transparency, curve="lin", exponent=1):
+        """
+        Update transparency based on given curve.
+
+        transparency: The new maximum transparency
+        curve: The curve to use for updating transparency
+        exponent: The exponent for the curve (only used if curve is "exp")
+        """
+        curves = {
+            "exp": lambda x, n=exponent: math.pow(
+                (math.pow(transparency, 1 / n) / 255 * x), n
+            ),
+            "lin": lambda x: transparency * (x / 255),
+            "sqrt": lambda x: curves["exp"](x, 0.5),
+            "quad": lambda x: curves["exp"](x, 2),
+            "cubic": lambda x: curves["exp"](x, 3),
+            "log": lambda x: transparency / math.log(255 + 1) * math.log(x + 1),
+        }
+
+        self.tk_images = {}
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+        new_data = [
+            (
+                *data[i][:3],
+                standard_methods.clamp(int(curves[curve](data[i][3])), 0, 255),
+            )
+            for i in range(len(data) - 1)
+        ]
+
         return self._update_pil_data(pil_img, new_data)
 
     def _update_pil_data(self, pil_img, new_data):
