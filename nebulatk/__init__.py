@@ -12,5 +12,4 @@ __all__ = [
     "bounds_manager",
     "standard_methods",
     "fonts_manager",
-    "animation_manager",
 ]

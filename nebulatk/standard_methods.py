@@ -104,7 +104,16 @@ def normalize_angle(angle):
 def get_rect_points(_object):
     """Checks if a point is inside a given object's rectangular bounds approximation"""
 
-    a = rel_position_to_abs(_object, _object.x, _object.y)
+    # Add up positions for relative offsets in parent tree
+    x = _object.x
+    y = _object.y
+    obj = _object
+    while obj.root != obj.master:
+        x += obj.root.x
+        y += obj.root.y
+        obj = obj.root
+
+    a = (x, y)
 
     # Normalize angle to be within [0, 360)
     angle = normalize_angle(_object.orientation)

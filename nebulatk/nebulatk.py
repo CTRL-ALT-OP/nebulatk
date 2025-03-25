@@ -1527,7 +1527,6 @@ def __main__():
     )
     btn.place(0, 0)
     btn.place(100, 200)
-    img.set_relative_transparency2(100, "quad")
     btn = Button(
         canvas,
         image=img,
@@ -1591,6 +1590,7 @@ def __main__():
 
     # Frame(canvas,30,30, border = "green").place(160,80)
     print(canvas.children)
+    print(standard_methods.get_rect_points(btn))
     # canvas.destroy()
 
 

@@ -1,4 +1,4 @@
-from .. import nebulatk as ntk
+import nebulatk as ntk
 
 
 def __main__():
@@ -11,10 +11,12 @@ def __main__():
         canvas,
         text="hillo",
         fill=[255, 66, 66, 15],
+        width=50,
+        height=50,
         image="Images/main_button_inactive.png",
         active_image="Images/main_button_inactive2.png",
         hover_image="Images/main_button_active.png",
-        hover_image_active="Images/main_button_active2.png",
+        active_hover_image="Images/main_button_active2.png",
         mode="toggle",
     ).place(0, 0)
     ntk.Button(
