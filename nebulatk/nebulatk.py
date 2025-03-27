@@ -1341,10 +1341,6 @@ class _window_internal(threading.Thread):
     def change_state(self, _object, state):
         self.canvas.itemconfigure(_object, state=state)
 
-    # Wrapper for canvas.configure method
-    def configure(self, _object, **kwargs):
-        self.canvas.itemconfigure(_object, kwargs)
-
     # NOTE: Other methods
 
     # Handle window closing
@@ -1419,6 +1415,108 @@ class _window_internal(threading.Thread):
             self.root.update_idletasks()
             self.root.update()
             sleep(0.01)"""
+
+    # Add resize method to change window dimensions
+    def resize(self, width=None, height=None):
+        """Resize the window to the specified dimensions.
+
+        Args:
+            width (int, optional): New width. If None, keeps current width.
+            height (int, optional): New height. If None, keeps current height.
+
+        Returns:
+            self: Returns self for method chaining
+        """
+        if width is not None:
+            self.width = int(width)
+        if height is not None:
+            self.height = int(height)
+
+        # Update the window geometry
+        self.root.geometry(f"{self.width}x{self.height}")
+
+        # If canvas dimensions should match window, update those too
+        if self.canvas_width == "default":
+            self.canvas_width = self.width
+            self.canvas.configure(width=self.width)
+        if self.canvas_height == "default":
+            self.canvas_height = self.height
+            self.canvas.configure(height=self.height)
+
+        # Update all children to match new dimensions
+        self._update_children()
+
+        return self
+
+    # Add show method similar to widget show
+    def show(self):
+        """Show the window if it was previously hidden.
+
+        Returns:
+            self: Returns self for method chaining
+        """
+        # Use deiconify to make window visible if it was withdrawn
+        if self.root is not None:
+            self.root.deiconify()
+            self.root.update()
+
+        return self
+
+    # Add hide method similar to widget hide
+    def hide(self):
+        """Hide the window without destroying it.
+
+        Returns:
+            self: Returns self for method chaining
+        """
+        # Use withdraw to hide window without destroying it
+        if self.root is not None:
+            self.root.withdraw()
+
+        return self
+
+    # Add configure method similar to widget configure
+    # Also Wrapper for canvas.configure method
+    def configure(self, _object=None, **kwargs):
+        """Configure window properties.
+
+        Supported properties:
+        - width: Window width
+        - height: Window height
+        - title: Window title
+        - resizable: Tuple of (width_resizable, height_resizable)
+
+        Returns:
+            self: Returns self for method chaining
+        """
+        if _object:
+            self.canvas.itemconfigure(_object, kwargs)
+            return self
+
+        if "width" in kwargs or "height" in kwargs:
+            self.resize(kwargs.get("width"), kwargs.get("height"))
+
+        if "title" in kwargs:
+            self.title = kwargs["title"]
+            if self.root is not None:
+                self.root.title(self.title)
+
+        if "resizable" in kwargs:
+            self.resizable = kwargs["resizable"]
+            if type(self.resizable) is bool:
+                self.resizable = (self.resizable, self.resizable)
+            if self.root is not None:
+                self.root.resizable(self.resizable[0], self.resizable[1])
+
+        return self
+
+    def _update_children(self, children=None, command="update"):
+        if children is None:
+            children = self.children
+        if children != []:
+            for child in children:
+                getattr(child, command)()
+                self._update_children(child.children)
 
 
 def Window(
@@ -1506,7 +1604,7 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window(title=None, width=800, height=500).place(400, 300)
+    """canvas = Window(title=None, width=800, height=500).place(400, 300)
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )
@@ -1591,7 +1689,14 @@ def __main__():
     # Frame(canvas,30,30, border = "green").place(160,80)
     print(canvas.children)
     print(standard_methods.get_rect_points(btn))
-    # canvas.destroy()
+    # canvas.destroy()"""
+    window = Window(width=800, height=600)
+    sleep(2)
+    window.resize(1000, 800)  # Change size
+    window.configure(title="New Title", resizable=(False, False))  # Change properties
+    window.hide()  # Hide window
+    sleep(4)
+    window.show()
 
 
 if __name__ == "__main__":
