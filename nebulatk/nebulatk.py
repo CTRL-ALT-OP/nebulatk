@@ -56,6 +56,94 @@ def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))
     return file
 
 
+# Base Component interface
+class Component:
+    def __init__(self, width=0, height=0, x=0, y=0, **kwargs):
+        self._position = [x, y]
+        self._size = [width, height]
+
+    def _update_children(self, children=None, command="update"):
+        if children is None:
+            children = self.children
+        if children != []:
+            for child in children:
+                getattr(child, command)()
+                self._update_children(child.children)
+
+    def hide(self):
+        self._visible = False
+        self._hide(root=True)
+        return self
+
+    def show(self):
+        self._visible = True
+        self._show(root=True)
+        return self
+
+    def update(self):
+        # Must implement in components
+        pass
+
+    def destroy(self):
+        # Must implement in components
+        pass
+
+    def place(self, x=0, y=0):
+        self._position = [x, y]
+        return self
+
+    # Properties:
+    @property
+    def visible(self):
+        return self._visible
+
+    @visible.setter
+    def visible(self, visible):
+        self._visible = visible
+
+        self.show() if visible else self.hide()
+
+    @property
+    def x(self):
+        return self._position[0]
+
+    @x.setter
+    def x(self, x):
+        self._position[0] = x
+
+        self.place(x, self.y)
+
+    @property
+    def y(self):
+        return self._position[1]
+
+    @y.setter
+    def y(self, y):
+        self._position[1] = y
+
+        self.place(self.x, y)
+
+    @property
+    def width(self):
+        return self._size[0]
+
+    @width.setter
+    def width(self, width):
+        self._size[0] = width
+
+        self.resize(width, self.height)
+
+    @property
+    def height(self):
+        return self._size[1]
+
+    @height.setter
+    def height(self, height):
+        self._size[1] = height
+
+        self.resize(self.width, height)
+
+
 # Initialize base methods for all widgets.
 # This is largely so we don't ever need to initialize methods that will never be used (e.g. hovered on a frame)
 class _widget_properties:
@@ -97,7 +185,7 @@ class _widget_properties:
         self.master = root.master
         self.children = []
 
-        if self.initialized and self.master.updates_all:
+        if self.initialized:
             self.update()
 
     @property
@@ -403,7 +491,7 @@ class _widget_properties:
         self._bounds_type = "non-standard"
 
 
-class _widget(_widget_properties):
+class _widget(_widget_properties, Component):
 
     def __init__(
         self,
@@ -442,6 +530,7 @@ class _widget(_widget_properties):
         mode: str = "standard",
         state: bool = False,
     ):
+        super().__init__()
         self.__initialize_general(root, width, height, orientation)
         self.__initialize_text(text, font, justify, text_color, active_text_color)
 
@@ -481,7 +570,7 @@ class _widget(_widget_properties):
         self.text_object = None
         self.active_text_object = None
 
-        self.visible = True
+        self._visible = True
         self.hovering = False
 
         self._root = None
@@ -638,45 +727,27 @@ class _widget(_widget_properties):
     def change_active(self):
         pass
 
-    def _update_children(self, children=None, command="update"):
-        if children is None:
-            children = self.children
-        if children != []:
-            for child in children:
-                getattr(child, command)()
-                self._update_children(child.children)
-
-    def _hide(self):
+    def _hide(self, root=False):
         """Hide the widget"""
 
         # Flop off hides all items that are part of this widget
         standard_methods.flop_off(self)
 
-        # Remove this widget from the bounds
-        # bounds_manager.remove_bounds(self, self.bounds_type)
+        # If this widget is the root widget, hide all its children
+        if root:
+            self._update_children(command="_hide")
 
         # Always return self on methods the user might call. this allows for chaining like button = Button().place().hide()
         return self
 
-    def hide(self):
-        self.visible = False
-        self._hide()
-        self._update_children(command="_hide")
-        return self
-
-    def _show(self):
+    def _show(self, root=False):
         """Shows the widget"""
         # Show makes all items that are part of this widget visible
         standard_methods.flop_on(self)
 
-        # Add this widget to bounds
-        # bounds_manager.update_bounds(self, self.x, self.y, self.bounds_type)
-        return self
-
-    def show(self):
-        self.visible = True
-        self._show()
-        self._update_children(command="_show")
+        # If this widget is the root widget, hide all its children
+        if root:
+            self._update_children(command="_show")
         return self
 
     # Default place behavior
@@ -1092,7 +1163,7 @@ class Frame(_widget):
 
 # Internal window class to implement threading
 # NOTE: Threading and tcl do not combine well, so we have to do a lot of stuff ourselves and be careful that all modifications to the tcl windows are done in the same thread
-class _window_internal(threading.Thread):
+class _window_internal(threading.Thread, Component):
 
     def __init__(
         self,
@@ -1114,6 +1185,7 @@ class _window_internal(threading.Thread):
         #   [_object, start_x, end_x],
         #   [_object2, start_x, end_x],
         # ]
+        Component.__init__(self, width, height)
         self.bounds = {}
 
         # Initialize variables
@@ -1123,8 +1195,6 @@ class _window_internal(threading.Thread):
         self.down = None
         self.active = None
         self.hovered = None
-        self.width = int(width)
-        self.height = int(height)
         self.resizable = resizable
         self.override = override
         self.updates_all = (
@@ -1428,9 +1498,9 @@ class _window_internal(threading.Thread):
             self: Returns self for method chaining
         """
         if width is not None:
-            self.width = int(width)
+            self._size[0] = int(width)
         if height is not None:
-            self.height = int(height)
+            self._size[1] = int(height)
 
         # Update the window geometry
         self.root.geometry(f"{self.width}x{self.height}")
@@ -1449,7 +1519,7 @@ class _window_internal(threading.Thread):
         return self
 
     # Add show method similar to widget show
-    def show(self):
+    def _show(self, root):
         """Show the window if it was previously hidden.
 
         Returns:
@@ -1458,12 +1528,12 @@ class _window_internal(threading.Thread):
         # Use deiconify to make window visible if it was withdrawn
         if self.root is not None:
             self.root.deiconify()
-            self.root.update()
+            self.update()
 
         return self
 
     # Add hide method similar to widget hide
-    def hide(self):
+    def _hide(self, root):
         """Hide the window without destroying it.
 
         Returns:
@@ -1510,13 +1580,9 @@ class _window_internal(threading.Thread):
 
         return self
 
-    def _update_children(self, children=None, command="update"):
-        if children is None:
-            children = self.children
-        if children != []:
-            for child in children:
-                getattr(child, command)()
-                self._update_children(child.children)
+    def update(self):
+        self.root.update()
+        return self
 
 
 def Window(
@@ -1604,7 +1670,7 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    """canvas = Window(title=None, width=800, height=500).place(400, 300)
+    canvas = Window(title=None, width=800, height=500).place(400, 300)
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )
@@ -1689,7 +1755,7 @@ def __main__():
     # Frame(canvas,30,30, border = "green").place(160,80)
     print(canvas.children)
     print(standard_methods.get_rect_points(btn))
-    # canvas.destroy()"""
+    # canvas.destroy()
     window = Window(width=800, height=600)
     sleep(2)
     window.resize(1000, 800)  # Change size
