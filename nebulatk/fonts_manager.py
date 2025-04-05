@@ -227,6 +227,6 @@ ALPHA = [
 i_e = len(ALPHA)
 ALPHA.extend(str.upper(ALPHA[i]) for i in range(i_e))
 NUMERIC = list("12345567890")
-SYMBOL = list("`~!@#$%^&*()_+-={}[]|\:\";',.></? ")
+SYMBOL = list("`~!@#$%^&*()_+-={}[]|\\:\";',.></? ")
 ALPHANUMERIC = ALPHA + NUMERIC
 ALPHANUMERIC_PLUS = ALPHANUMERIC + SYMBOL
