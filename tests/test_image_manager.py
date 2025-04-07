@@ -1,8 +1,7 @@
-from typing import Any, List, Optional, TYPE_CHECKING
 import sys
 import os
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from PIL import Image, ImageTk
 
 sys.path.insert(

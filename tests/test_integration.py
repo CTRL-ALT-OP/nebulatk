@@ -1,10 +1,6 @@
-from typing import Any, List, Optional, TYPE_CHECKING
 import sys
 import os
 import pytest
-import threading
-import time
-from unittest.mock import MagicMock, patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
@@ -90,7 +86,7 @@ class TestIntegration:
         )
 
         # Create animation
-        animation = animation_controller.animate(
+        animation_controller.animate(
             widget=button,
             target_x=100,
             target_y=50,

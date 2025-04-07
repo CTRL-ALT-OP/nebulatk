@@ -1,14 +1,6 @@
-from typing import Any, List, Optional, TYPE_CHECKING
 import sys
 import os
 import pytest
-
-if TYPE_CHECKING:
-    from _pytest.capture import CaptureFixture
-    from _pytest.fixtures import FixtureRequest
-    from _pytest.logging import LogCaptureFixture
-    from _pytest.monkeypatch import MonkeyPatch
-    from pytest_mock.plugin import MockerFixture
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))

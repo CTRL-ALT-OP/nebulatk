@@ -1,4 +1,3 @@
-from typing import Any, List, Optional, TYPE_CHECKING
 import sys
 import os
 import pytest

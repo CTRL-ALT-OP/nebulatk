@@ -1,7 +1,5 @@
-from typing import Any, List, Optional, TYPE_CHECKING
 import sys
 import os
-import pytest
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
@@ -81,8 +79,8 @@ def test_hit_bounds():
     window = ntk.Window()
     label = ntk.Label(window, text="hi", width=10, height=10).place()
 
-    assert bounds_manager.check_hit(label, 1, 1) == True
-    assert bounds_manager.check_hit(label, 11, 11) == False
+    assert bounds_manager.check_hit(label, 1, 1)
+    assert not bounds_manager.check_hit(label, 11, 11)
     window.close()
 
 
@@ -99,6 +97,6 @@ def test_hit_custom():
     window = ntk.Window()
     label = ntk.Button(window, image=test_image, width=5, height=5).place()
 
-    assert bounds_manager.check_hit(label, 0, 0) == False
-    assert bounds_manager.check_hit(label, 2, 2) == True
+    assert not bounds_manager.check_hit(label, 0, 0)
+    assert bounds_manager.check_hit(label, 2, 2)
     window.close()
