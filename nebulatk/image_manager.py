@@ -90,7 +90,7 @@ class Image:
                 *color[:3],
                 standard_methods.clamp(data[i][3] - (255 - color[3]), 0, 255),
             )
-            for i in range(len(data) - 1)
+            for i in range(len(data))
         ]
         return self._update_pil_data(pil_img, new_data)
 
@@ -103,7 +103,7 @@ class Image:
                 *data[i][:3],
                 standard_methods.clamp(transparency, 0, 255),
             )
-            for i in range(len(data) - 1)
+            for i in range(len(data))
         ]
         return self._update_pil_data(pil_img, new_data)
 
@@ -116,7 +116,7 @@ class Image:
                 *data[i][:3],
                 standard_methods.clamp(data[i][3] - transparency, 0, 255),
             )
-            for i in range(len(data) - 1)
+            for i in range(len(data))
         ]
         return self._update_pil_data(pil_img, new_data)
 
@@ -147,7 +147,7 @@ class Image:
                 *data[i][:3],
                 standard_methods.clamp(int(curves[curve](data[i][3])), 0, 255),
             )
-            for i in range(len(data) - 1)
+            for i in range(len(data))
         ]
 
         return self._update_pil_data(pil_img, new_data)
@@ -222,7 +222,7 @@ def load_image_generic(window, image, return_both=False):
         image = pil.open(image)
 
         # Convert image for tkinter
-        image_converted = convert_image(image, window)
+        image_converted = convert_image(window, image)
 
     # Return both PhotoImage and PilImage objects if requested
     return (image_converted, image) if return_both else image_converted
