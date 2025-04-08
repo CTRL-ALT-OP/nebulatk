@@ -86,11 +86,14 @@ class TestIntegration:
         )
 
         # Create animation
-        animation_controller.animate(
+        animation = animation_controller.Animation(
             widget=button,
-            target_x=100,
-            target_y=50,
+            target_attributes={"x": 100, "y": 50},
+            duration=0.1,
+            steps=10,
         )
+        animation.start()
+        animation.join()
 
         # Button should have moved
         assert button.x == 100

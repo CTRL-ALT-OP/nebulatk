@@ -24,17 +24,117 @@ def canvas() -> ntk.Window:
     window.close()
 
 
-def test_animation_with_real_widget(canvas):
-    """Test animation with a real widget."""
+def test_basic_animation(canvas: ntk.Window) -> None:
+    """
+    Test animation with a real widget using multiple attributes.
+
+    Args:
+        canvas: Test window fixture
+    """
     button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
         x=0, y=100
     )
 
-    animation_controller.animate(
-        widget=button,
-        target_x=100,
-        target_y=50,
+    # Test animation with multiple attributes (x, y, and width)
+    target_attributes = {"x": 100.0, "y": 50.0, "width": 150.0}
+
+    animation = animation_controller.Animation(
+        widget=button, target_attributes=target_attributes, duration=0.1, steps=10
+    )
+    animation.start()
+    animation.join()  # Wait for animation to complete
+
+    # Verify all animated attributes
+    for attr, target in target_attributes.items():
+        assert (
+            getattr(button, attr) == target
+        ), f"Attribute {attr} did not reach target value"
+
+
+def test_invalid_animation(canvas: ntk.Window) -> None:
+    """
+    Test animation with a real widget using multiple attributes.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
+        x=100, y=0
     )
 
-    assert button.x == 100
-    assert button.y == 50
+    # Test animation with invalid attributes (x, y, and width)
+    target_attributes = {
+        "x": 0.0,
+        "y": 50.0,
+        "width": "hi",
+        "image": 50,
+        "not_an_attr": 50,
+    }
+    actual_attributes = {"x": 0.0, "y": 50.0}
+
+    with pytest.warns(Warning, match="not_an_attr"):
+        with pytest.warns(Warning, match="width"):
+            with pytest.warns(Warning, match="image"):
+                animation = animation_controller.Animation(
+                    widget=button,
+                    target_attributes=target_attributes,
+                    duration=0.1,
+                    steps=10,
+                )
+    animation.start()
+    animation.join()  # Wait for animation to complete
+
+    # Verify all animated attributes
+    for attr, target in actual_attributes.items():
+        assert (
+            getattr(button, attr) == target
+        ), f"Attribute {attr} did not reach target value"
+
+
+def test_stop_animation(canvas: ntk.Window) -> None:
+    """
+    Test stopping an animation.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
+        x=0, y=100
+    )
+
+    animation = animation_controller.Animation(
+        widget=button, target_attributes={"x": 100.0, "y": 50.0}, duration=0.1, steps=10
+    )
+    animation.start()
+    animation.stop()
+    animation.join()
+    assert button.x == 0
+    assert button.y == 100
+
+
+def test_easing_functions(canvas: ntk.Window) -> None:
+    """
+    Test easing functions.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+
+    for curve in dir(animation_controller.Curves):
+        if curve.startswith("__"):
+            continue
+        if not callable(getattr(animation_controller.Curves, curve)):
+            continue
+        button.place(x=0, y=100)
+        animation = animation_controller.Animation(
+            widget=button,
+            target_attributes={"x": 100.0, "y": 50.0},
+            duration=0.1,
+            steps=10,
+            curve=getattr(animation_controller.Curves, curve),
+        )
+        animation.start()
+        animation.join()
+        assert button.x == 100
+        assert button.y == 50

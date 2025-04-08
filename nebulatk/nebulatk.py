@@ -17,6 +17,7 @@ try:
         image_manager,
         standard_methods,
         defaults,
+        animation_controller,
     )
 except ImportError:
     import bounds_manager
@@ -25,6 +26,7 @@ except ImportError:
     import image_manager
     import standard_methods
     import defaults
+    import animation_controller
 
 
 # Our implementation of tkinter's file_dialog.
@@ -1670,7 +1672,7 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window(title=None, width=800, height=500).place(400, 300)
+    """canvas = Window(title=None, width=800, height=500).place(400, 300)
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )
@@ -1762,7 +1764,39 @@ def __main__():
     window.configure(title="New Title", resizable=(False, False))  # Change properties
     window.hide()  # Hide window
     sleep(4)
-    window.show()
+    window.show()"""
+    window = Window(width=800, height=600)
+    btn = Button(
+        window,
+        width=100,
+        height=100,
+        mode="toggle",
+        border_width=2,
+    )
+    btn.place(0, 0)
+
+    def animate_btn():
+        btn.width = 100
+        btn.height = 100
+        btn.place(0, 0)
+        btn.update()
+        anim = animation_controller.Animation(
+            btn,
+            {"x": 100, "y": 100},
+            5,
+            60,
+            animation_controller.Curves.bounce,
+        )
+        anim.start()
+
+    btn2 = Button(
+        window,
+        text="animate",
+        width=100,
+        height=50,
+        command=animate_btn,
+    )
+    btn2.place(100, 0)
 
 
 if __name__ == "__main__":
