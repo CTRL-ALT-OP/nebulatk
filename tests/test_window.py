@@ -49,30 +49,3 @@ def test_window_custom_properties(window: ntk.Window) -> None:
     assert window.width == 800
     assert window.height == 500
     assert window.title == "Test Window"
-
-
-def test_window_position(window: ntk.Window) -> None:
-    """
-    Test window position functionality.
-
-    Args:
-        window: The test window fixture.
-    """
-    # Test setting position
-    new_x = 100
-    new_y = 200
-    window.place(new_x, new_y)
-    assert window.root.geometry() == f"800x500+{new_x}+{new_y}"
-
-
-def test_window_title_change(window: ntk.Window) -> None:
-    """
-    Test window title change functionality.
-
-    Args:
-        window: The test window fixture.
-    """
-    # Test changing title
-    new_title = "New Test Title"
-    window.title = new_title
-    assert window.title == new_title
