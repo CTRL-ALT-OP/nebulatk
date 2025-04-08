@@ -39,17 +39,6 @@ def test_with_distinguish():
     yield original
 
 
-@pytest.fixture
-def test_image_rgba_path():
-    # Create a temporary test RGBA image
-    path = "test_image_rgba.png"
-    create_test_image(path, size=(100, 100), color=(255, 0, 0, 128), mode="RGBA")
-    yield path
-    # Clean up
-    if os.path.exists(path):
-        os.remove(path)
-
-
 def test_load_image(test_image_path):
     """Test loading an image."""
 
