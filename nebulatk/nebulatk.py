@@ -1780,14 +1780,28 @@ def __main__():
         btn.height = 100
         btn.place(0, 0)
         btn.update()
-        anim = animation_controller.Animation(
-            btn,
-            {"x": 100, "y": 100},
-            5,
-            60,
-            animation_controller.Curves.bounce,
-        )
-        anim.start()
+        keyframes = [
+            (
+                1.0,
+                {"x": 50, "y": 50},
+                animation_controller.Curves.ease_in_quad,
+            ),  # Move to (50, 50) in 1s
+            (
+                1,
+                {"x": 100, "y": 100},
+                animation_controller.Curves.bounce,
+                1,
+            ),  # Then to (100, 100) in 0.5s
+            animation_controller.Animation(
+                btn,
+                {"x": 0, "y": 0},
+                1,
+                animation_controller.Curves.ease_out_cubic,
+            ),  # Back to (0, 0) in 1s
+            [animation_controller.Animation(btn, {"width": 50}, 2.5), 0],
+        ]
+        anim_group = animation_controller.AnimationGroup(btn, keyframes, steps=60)
+        anim_group.start()
 
     btn2 = Button(
         window,

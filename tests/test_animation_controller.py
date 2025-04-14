@@ -138,3 +138,71 @@ def test_easing_functions(canvas: ntk.Window) -> None:
         animation.join()
         assert button.x == 100
         assert button.y == 50
+
+
+def test_animation_group(canvas: ntk.Window) -> None:
+    """
+    Test animation group.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=0, y=100)
+    animation_group = animation_controller.AnimationGroup(
+        widget=button,
+        keyframes=[
+            (0.1, {"x": 100.0, "y": 50.0}, animation_controller.Curves.linear),
+            (0.1, {"x": 0.0, "y": 0.0}, animation_controller.Curves.ease_out_quad),
+        ],
+        steps=10,
+    )
+    animation_group.start()
+    animation_group.join()
+    assert button.x == 0
+    assert button.y == 0
+
+
+def test_animation_group_with_animation_instances(canvas: ntk.Window) -> None:
+    """
+    Test animation group with animation instances.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=0, y=100)
+    animation_group = animation_controller.AnimationGroup(
+        widget=button,
+        keyframes=[
+            animation_controller.Animation(
+                button, {"x": 100.0, "y": 50.0}, duration=0.1, steps=10
+            )
+        ],
+        steps=10,
+    )
+    animation_group.start()
+    animation_group.join()
+    assert button.x == 100
+    assert button.y == 50
+
+
+def test_animation_group_with_invalid_keyframes(canvas: ntk.Window) -> None:
+    """
+    Test animation group with invalid keyframes.
+
+    Args:
+        canvas: Test window fixture
+    """
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=0, y=100)
+
+    with pytest.warns(Warning, match="2"):
+        with pytest.warns(Warning, match="4"):
+            with pytest.warns(Warning, match="instance"):
+                with pytest.warns(Warning, match="dictionary"):
+                    animation_controller.AnimationGroup(
+                        widget=button,
+                        keyframes=[1, [2], [3, 4, 5, 6, 7, 8]],
+                        steps=10,
+                    )
