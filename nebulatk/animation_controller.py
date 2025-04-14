@@ -207,6 +207,9 @@ class Animation(threading.Thread):
             if step == int(self.steps * self.duration):
                 updated_values = self.target_values
 
+                if self.widget.master:
+                    self.widget.master.update()
+
             # Update widget attributes
             for attr, value in updated_values.items():
                 setattr(self.widget, attr, value)
