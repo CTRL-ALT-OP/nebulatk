@@ -1119,8 +1119,66 @@ class Entry(_widget):
         self.can_click = False
         self.can_type = True
 
+        # Create cursor for text entry
+        self.cursor = (
+            Label(
+                root=self,
+                width=2,
+                height=self.font[1] * 1.2 if hasattr(self, "font") else 16,
+                fill="black",
+                border_width=0,
+            )
+            .place(0, 5)
+            .hide()
+        )
+
+        # Position cursor at the end of text
+        self._update_cursor_position()
+
+        # Create flashing cursor animation
+        self.cursor_animation = animation_controller.Animation(
+            self.cursor,
+            {
+                "height": self.font[1] * 1.1 if hasattr(self, "font") else 14,
+                "y": (
+                    self.font[1] * 1.2 - self.font[1] * 1.1 + 5
+                    if hasattr(self, "font")
+                    else 6
+                ),
+            },
+            duration=0.5,
+            looping=True,
+        )
+        self.cursor_animation.start()
+
+    def _update_cursor_position(self):
+        from tkinter import font as tkfont
+
+        text_width = tkfont.Font(
+            self.master.root, font=self.font, text=self.text
+        ).measure(self.text)
+
+        if self.justify == "left":
+            self.cursor.x = text_width + 5
+        elif self.justify == "right":
+            self.cursor.x = self.width - text_width - 5
+        elif self.justify == "center":
+            self.cursor.x = self.width / 2 + text_width / 2
+
     def get(self):
         return self.entire_text
+
+    def typed(self, char):
+        super().typed(char)
+        self._update_cursor_position()
+
+    def clicked(self):
+        super().clicked()
+        self.cursor.show()
+
+    def change_active(self):
+        super().change_active()
+        self.cursor.hide()
 
 
 class Frame(_widget):
@@ -1253,6 +1311,8 @@ class _window_internal(threading.Thread, Component):
         # If the new object is actually new, update the current active widget
         # self.active is used for things like detecting what widget to send keypresses to
         if active_new is not self.active:
+            if self.active is not None:
+                self.active.change_active()
             self.active = active_new
 
         # If the new object wasn't already being clicked
@@ -1822,6 +1882,7 @@ def __main__():
         looping=True,
     )
     anim2.start()
+    Entry(window, width=100, height=50, text="hello").place(0, 100)
 
 
 if __name__ == "__main__":
