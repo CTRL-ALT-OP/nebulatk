@@ -1812,6 +1812,17 @@ def __main__():
     )
     btn2.place(100, 0)
 
+    anim2 = animation_controller.AnimationGroup(
+        btn2,
+        [
+            [animation_controller.Animation(btn2, {"width": 50}, 1), 0],
+            [animation_controller.Animation(btn2, {"height": 100}, 1), 0],
+        ],
+        steps=60,
+        looping=True,
+    )
+    anim2.start()
+
 
 if __name__ == "__main__":
     __main__()

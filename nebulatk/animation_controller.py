@@ -128,6 +128,7 @@ class Animation:
         duration: float = 0.5,
         steps: int = 60,
         curve: Callable[[float], float] = Curves.linear,
+        looping: bool = False,
         threadless: bool = False,
     ) -> None:
         """
@@ -182,6 +183,7 @@ class Animation:
         self.curve = curve
         self.steps = steps
         self.step = 0
+        self.looping = looping
 
     def start(self) -> None:
         """Animate the widget to target coordinates with specified easing curve.
@@ -204,7 +206,7 @@ class Animation:
         if self.thread:
             return self.thread.join()
 
-    def tick(self):
+    def tick(self, direction: int = 1):
         t = self.step / (self.steps * self.duration)
         eased_t = self.curve(t)
 
@@ -228,17 +230,30 @@ class Animation:
 
         self.current_values = updated_values
         self.widget.update()
-        self.step += 1
+        self.step += direction
 
     def run(self) -> None:
         """
         Run the animation loop, updating all specified attributes.
         """
-        for _ in range(int(self.steps * self.duration) + 1):
-            if not self.running:
-                break
-            self.tick()
-            sleep(1 / self.steps)
+        if self.looping:
+            while self.running:
+                for _ in range(int(self.steps * self.duration) + 1):
+                    if not self.running:
+                        break
+                    self.tick()
+                    sleep(1 / self.steps)
+                for _ in range(int(self.steps * self.duration) + 1):
+                    if not self.running:
+                        break
+                    self.tick(-1)
+                    sleep(1 / self.steps)
+        else:
+            for _ in range(int(self.steps * self.duration) + 1):
+                if not self.running:
+                    break
+                self.tick()
+                sleep(1 / self.steps)
 
 
 class AnimationGroup(threading.Thread):
@@ -260,6 +275,7 @@ class AnimationGroup(threading.Thread):
             | Animation
         ),
         steps: int = 60,
+        looping: bool = False,
     ) -> None:
         """
         Initialize an animation group with keyframes.
@@ -278,6 +294,7 @@ class AnimationGroup(threading.Thread):
         self.keyframes = []
         self.steps = steps
         self.running = False
+        self.looping = looping
 
         for keyframe in keyframes:
             if not isinstance(keyframe, (Iterable, Animation)):
@@ -317,7 +334,7 @@ class AnimationGroup(threading.Thread):
                 keyframe.threadless = True
                 animations.append([keyframe, current_time])
                 current_time += keyframe.duration
-                end_time = max(end_time, current_time)
+                end_time = max(end_time, keyframe.duration)
             # Handle existing Animation instances with start_times
             elif isinstance(keyframe[0], Animation):
                 anim = keyframe[0]
@@ -348,7 +365,7 @@ class AnimationGroup(threading.Thread):
                 animations.append([anim, start_time])
                 current_time += duration
 
-            end_time = max(end_time, current_time)
+                end_time = max(end_time, current_time)
 
         self.length = end_time
         return animations
@@ -367,16 +384,47 @@ class AnimationGroup(threading.Thread):
 
     def run(self) -> None:
         """Run all animations in sequence."""
-        for step in range(int(self.length * self.steps) + 1):
-            if not self.running:
-                break
-            for animation, start_time in self.animations:
-                if (
-                    start_time * self.steps
-                    <= step
-                    <= (start_time + animation.duration) * self.steps
-                ):
-                    if not animation.running:
-                        animation.start()
-                    animation.tick()
-            sleep(1 / self.steps)
+        if self.looping:
+            while self.running:
+                for step in range(int(self.length * self.steps) + 1):
+                    print(step)
+                    if not self.running:
+                        break
+                    for animation, start_time in self.animations:
+                        if (
+                            start_time * self.steps
+                            <= step
+                            <= (start_time + animation.duration) * self.steps
+                        ):
+                            if not animation.running:
+                                animation.start()
+                            animation.tick()
+                        sleep(1 / self.steps)
+                for step in range(int(self.length * self.steps) + 1, 0, -1):
+                    print(step)
+                    if not self.running:
+                        break
+                    for animation, start_time in self.animations:
+                        if (
+                            start_time * self.steps
+                            <= step
+                            <= (start_time + animation.duration) * self.steps
+                        ):
+                            if not animation.running:
+                                animation.start()
+                            animation.tick(-1)
+                        sleep(1 / self.steps)
+        else:
+            for step in range(int(self.length * self.steps) + 1):
+                if not self.running:
+                    break
+                for animation, start_time in self.animations:
+                    if (
+                        start_time * self.steps
+                        <= step
+                        <= (start_time + animation.duration) * self.steps
+                    ):
+                        if not animation.running:
+                            animation.start()
+                        animation.tick()
+                    sleep(1 / self.steps)
