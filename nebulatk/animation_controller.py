@@ -334,7 +334,7 @@ class AnimationGroup(threading.Thread):
                 keyframe.threadless = True
                 animations.append([keyframe, current_time])
                 current_time += keyframe.duration
-                end_time = max(end_time, keyframe.duration)
+                end_time = max(end_time, current_time)
             # Handle existing Animation instances with start_times
             elif isinstance(keyframe[0], Animation):
                 anim = keyframe[0]
@@ -387,7 +387,6 @@ class AnimationGroup(threading.Thread):
         if self.looping:
             while self.running:
                 for step in range(int(self.length * self.steps) + 1):
-                    print(step)
                     if not self.running:
                         break
                     for animation, start_time in self.animations:
@@ -401,7 +400,6 @@ class AnimationGroup(threading.Thread):
                             animation.tick()
                         sleep(1 / self.steps)
                 for step in range(int(self.length * self.steps) + 1, 0, -1):
-                    print(step)
                     if not self.running:
                         break
                     for animation, start_time in self.animations:
@@ -416,6 +414,7 @@ class AnimationGroup(threading.Thread):
                         sleep(1 / self.steps)
         else:
             for step in range(int(self.length * self.steps) + 1):
+                print(step)
                 if not self.running:
                     break
                 for animation, start_time in self.animations:
@@ -427,4 +426,4 @@ class AnimationGroup(threading.Thread):
                         if not animation.running:
                             animation.start()
                         animation.tick()
-                    sleep(1 / self.steps)
+                sleep(1 / self.steps)
