@@ -414,7 +414,6 @@ class AnimationGroup(threading.Thread):
                         sleep(1 / self.steps)
         else:
             for step in range(int(self.length * self.steps) + 1):
-                print(step)
                 if not self.running:
                     break
                 for animation, start_time in self.animations:
