@@ -603,6 +603,9 @@ class _widget(_widget_properties, Component):
 
         self.active_text_color = active_text_color
 
+        self.cursor_position = 0
+        self.slice = [0, 0]
+
     def __initialize_colors(
         self, fill, active_fill, hover_fill, active_hover_fill, no_image
     ):
@@ -656,7 +659,7 @@ class _widget(_widget_properties, Component):
             self.hovering = False
 
     # Utilize our standard methods to manage clicking
-    def clicked(self):
+    def clicked(self, x=None, y=None):
         if self.can_click:
             if self.mode == "toggle":
                 standard_methods.clicked_toggle(self)
@@ -697,17 +700,45 @@ class _widget(_widget_properties, Component):
         standard_methods.delete(self)
         self.root.master.children.remove(self)
 
-    def typed(self, character):
+    def typed(self, char):
         if not self.can_type:
             return
         # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the displayed slice of self.entire_text
-        # Backspace character
-        if character == "\x08":
-            self.entire_text = self.entire_text[:-1]
-
-        # If the character is a visible character
-        elif character in fonts_manager.ALPHANUMERIC_PLUS:
-            self.entire_text = self.entire_text + character
+        if char.keysym == "BackSpace":
+            if self.cursor_position <= 0:
+                return
+            self.entire_text = (
+                self.entire_text[: self.cursor_position - 1]
+                + self.entire_text[self.cursor_position :]
+            )
+            self.cursor_position -= 1
+        elif char.keysym == "Delete":
+            if self.cursor_position < len(self.entire_text):
+                self.entire_text = (
+                    self.entire_text[: self.cursor_position]
+                    + self.entire_text[self.cursor_position + 1 :]
+                )
+            else:
+                return
+        elif char.keysym == "Left":
+            if self.cursor_position > 0:
+                self.cursor_position -= 1
+        elif char.keysym == "Right":
+            if self.cursor_position < len(self.entire_text):
+                self.cursor_position += 1
+        elif char.keysym == "Home":
+            self.cursor_position = 0
+        elif char.keysym == "End":
+            self.cursor_position = len(self.entire_text)
+        elif char.char in fonts_manager.ALPHANUMERIC_PLUS:
+            self.entire_text = (
+                self.entire_text[: self.cursor_position]
+                + char.char
+                + self.entire_text[self.cursor_position :]
+            )
+            self.cursor_position += 1
+        else:
+            return  # Ignore other special characters
 
         # Move end of display to the end of the text
         self.end = len(self.entire_text)
@@ -717,13 +748,22 @@ class _widget(_widget_properties, Component):
             self.master, self.entire_text, self.font, self.width, self.end
         )
 
-        # Configure display text to be the slice of text that we can fit in the widget
+        # Calculate the text slice to display, keeping the cursor visible
+        start_pos = max(
+            0,
+            min(
+                self.cursor_position - max_length // 2,
+                len(self.entire_text) - max_length,
+            ),
+        )
+        end_pos = min(start_pos + max_length, len(self.entire_text))
+        self.slice = [start_pos, end_pos]
+        display_text = self.entire_text[start_pos:end_pos]
+        # Configure display text
         if self.text_object is not None:
-            self.configure(
-                text=self.entire_text[self.end - max_length : self.end],
-            )
+            self.configure(text=display_text)
         else:
-            self.text = self.entire_text[self.end - max_length : self.end]
+            self.text = display_text
             self.update()
 
     def change_active(self):
@@ -1133,6 +1173,7 @@ class Entry(_widget):
         )
 
         # Position cursor at the end of text
+        self.cursor_position = len(self.text)
         self._update_cursor_position()
 
         # Create flashing cursor animation
@@ -1154,27 +1195,76 @@ class Entry(_widget):
     def _update_cursor_position(self):
         from tkinter import font as tkfont
 
-        text_width = tkfont.Font(
-            self.master.root, font=self.font, text=self.text
-        ).measure(self.text)
+        relative_cursor_position = self.cursor_position - self.slice[0]
+        text_width = tkfont.Font(self.master.root, font=self.font).measure(
+            self.text[:relative_cursor_position]
+        )
 
         if self.justify == "left":
             self.cursor.x = text_width + 5
         elif self.justify == "right":
             self.cursor.x = self.width - text_width - 5
         elif self.justify == "center":
-            self.cursor.x = self.width / 2 + text_width / 2
+            total_width = tkfont.Font(self.master.root, font=self.font).measure(
+                self.text
+            )
+            self.cursor.x = self.width / 2 - total_width / 2 + text_width
+        self.update()
 
     def get(self):
         return self.entire_text
 
+    def _find_cursor_position_from_click(self, click_x):
+        from tkinter import font as tkfont
+
+        # Convert to relative position within the entry
+        rel_x = click_x - self.x
+
+        # Adjust for text justification
+        if self.justify == "center":
+            total_width = tkfont.Font(self.master.root, font=self.font).measure(
+                self.text
+            )
+            rel_x = rel_x - (self.width / 2 - total_width / 2)
+        elif self.justify == "right":
+            total_width = tkfont.Font(self.master.root, font=self.font).measure(
+                self.text
+            )
+            rel_x = rel_x - (self.width - total_width - 5)
+        elif self.justify == "left":
+            rel_x = rel_x - 5
+
+        # Find the closest character position
+        font_obj = tkfont.Font(self.master.root, font=self.font)
+
+        # Try each position to find closest match
+        closest_pos = 0
+        min_diff = float("inf")
+
+        for pos in range(len(self.text) + 1):
+            pos_width = font_obj.measure(self.text[:pos])
+            diff = abs(pos_width - rel_x)
+
+            if diff < min_diff:
+                min_diff = diff
+                closest_pos = pos
+        return closest_pos
+
     def typed(self, char):
         super().typed(char)
+
         self._update_cursor_position()
 
-    def clicked(self):
+    def clicked(self, x=None, y=None):
         super().clicked()
         self.cursor.show()
+
+        # If click position is provided, update cursor position
+        if x is not None:
+            self.cursor_position = (
+                self._find_cursor_position_from_click(x) + self.slice[0]
+            )
+            self._update_cursor_position()
 
     def change_active(self):
         super().change_active()
@@ -1321,8 +1411,8 @@ class _window_internal(threading.Thread, Component):
 
             # If the new object is a valid widget
             if active_new is not None:
-                # Click on the object
-                active_new.clicked()
+                # Click on the object with click position
+                active_new.clicked(x, y)
 
     # Handle mouse click up events
     def click_up(self, event):
@@ -1390,13 +1480,12 @@ class _window_internal(threading.Thread, Component):
         # Ensure that the variables for selected, clicked, and hovered objects are reset
         self.hovered = None
         self.down = None
-        self.active = None
 
     # Handle keystrokes
     def typing(self, event):
         # If a widget == active, we should send keystrokes to it
         if self.active:
-            self.active.typed(event.char)
+            self.active.typed(event)
 
     # NOTE: CREATION HANDLERS
     # These are necessary so that threading works properly with tcl
