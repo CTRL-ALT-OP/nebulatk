@@ -6,6 +6,13 @@ NebulaTk is a wrapper of Tkinter that implements many functions that Tkinter doe
 Currently, it exclusively uses the tcl Canvas widget to display visuals, to allow for full transparency support.
 All events, widgets, and functionality has been written either custom or with Pillow.
 
+# To run project:
+Ensure `pillow` is installed.
+The main file is nebulatk.py.
+When in the main project structure, you can run:
+python3.xx nebulatk/nebulatk.py
+This runs a sample window.
+To run tests, run `pytest` from the main folder.
 
 ## Non-TCL functionality:
 1. Non-blocking window mainloop
