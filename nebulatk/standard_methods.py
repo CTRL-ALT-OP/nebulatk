@@ -1,13 +1,3 @@
-try:
-    from . import image_manager
-    from . import fonts_manager
-    from . import bounds_manager
-    from . import colors_manager
-except ImportError:
-    import image_manager
-    import fonts_manager
-    import bounds_manager
-    import colors_manager
 from math import sin, asin, cos, radians, sqrt
 
 # Define the names of objects
