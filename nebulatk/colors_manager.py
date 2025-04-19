@@ -116,11 +116,11 @@ def convert_to_hex(color):
         if not color.startswith("#"):
             # If it is a hex string, add '#' to the beginning and return it
             if all(c in string.hexdigits for c in color):
-                return f"#{color}"
+                return f"#{color}ff".lower()
 
             # If it's not a hex string, it must be a default color
             # Return hex string from default color
-            return colors[color][0]
+            return f"{colors[color][0]}ff".lower()
 
         # If color is a hex string, return it
         return color
@@ -132,8 +132,8 @@ def convert_to_hex(color):
     # Convert to hex and return result
     if type(color) is tuple:
         if len(color) > 3:
-            return "#%02x%02x%02x%02x" % color
-        return "#%02x%02x%02x" % color
+            return "#%02x%02x%02x%02x" % color.lower()
+        return "#%02x%02x%02xff" % color.lower()
 
 
 def convert_to_rgb(color):
@@ -154,8 +154,8 @@ def convert_to_rgb(color):
             color = color.color
         # If doesn't start with '#', check if it's a hex string. If it isn't, it must be a default color.
         if not color.startswith("#") and any(c not in string.hexdigits for c in color):
-            return colors[color][1]
-        # Strip '#' off end
+            return (*colors[color][1], 255)
+        # Strip '#' off beginning
         color = color.lstrip("#")
 
         # If RGBA convert to hex string with 4 channels

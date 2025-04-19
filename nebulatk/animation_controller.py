@@ -161,7 +161,7 @@ class Animation:
                 stacklevel=2,
             )
             return
-        for attr in target_attributes:
+        for attr, target_val in target_attributes.items():
             if not hasattr(widget, attr):
                 warnings.warn(
                     f"Widget does not have attribute: {attr}, skipping...",
@@ -170,8 +170,6 @@ class Animation:
                 )
                 continue
             current_val = getattr(widget, attr)
-            target_val = target_attributes[attr]
-
             # Check if this is a color attribute
             if isinstance(
                 target_val, (colors_manager.Color, str, list, tuple)
@@ -201,7 +199,6 @@ class Animation:
                         category=Warning,
                         stacklevel=2,
                     )
-                    continue
             elif isinstance(current_val, (int, float)) and isinstance(
                 target_val, (int, float)
             ):
@@ -289,18 +286,18 @@ class Animation:
         """
         if self.looping:
             while self.running:
-                for _ in range(int(self.steps * self.duration) + 1):
+                for _ in range(int(self.steps * self.duration)):
                     if not self.running:
                         break
                     self.tick()
                     sleep(1 / self.steps)
-                for _ in range(int(self.steps * self.duration) + 1):
+                for _ in range(int(self.steps * self.duration)):
                     if not self.running:
                         break
                     self.tick(-1)
                     sleep(1 / self.steps)
         else:
-            for _ in range(int(self.steps * self.duration) + 1):
+            for _ in range(int(self.steps * self.duration)):
                 if not self.running:
                     break
                 self.tick()
