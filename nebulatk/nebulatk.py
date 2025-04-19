@@ -1973,6 +1973,14 @@ def __main__():
     anim2.start()
     Entry(window, width=100, height=50, text="hello").place(0, 100)
 
+    widget = Button(window, text="hello", width=100, height=100, fill="#FF0000").place(
+        200, 200
+    )  # Red
+    anim = animation_controller.Animation(
+        widget, {"fill": "#00FF0000"}, duration=1.0, looping=True
+    )  # Animate to green
+    anim.start()
+
 
 if __name__ == "__main__":
     __main__()

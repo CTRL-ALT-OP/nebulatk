@@ -124,7 +124,7 @@ class Animation:
     def __init__(
         self,
         widget: object,
-        target_attributes: dict[str, float],
+        target_attributes: dict[str, float | str],
         duration: float = 0.5,
         steps: int = 60,
         curve: Callable[[float], float] = Curves.linear,
@@ -144,9 +144,9 @@ class Animation:
         self.threadless = threadless
         self.widget = widget
         self.duration = duration
-        # Initialize current positions for all attributes
         self.current_values = {}
         self.target_values = {}
+        self.is_color_attr = {}
 
         if not isinstance(target_attributes, dict):
             warnings.warn(
@@ -163,21 +163,50 @@ class Animation:
                     stacklevel=2,
                 )
                 continue
-            if not isinstance(getattr(widget, attr), (int, float)):
+            current_val = getattr(widget, attr)
+            target_val = target_attributes[attr]
+
+            # Check if this is a color attribute
+            if isinstance(target_val, str) or hasattr(
+                target_val, "color"
+            ):  # Hex or Color object
+                try:
+                    from .colors_manager import convert_to_hex, Color
+
+                    # Convert current and target to RGB
+                    current_rgb = (
+                        Color(current_val).rgb
+                        if hasattr(current_val, "rgb")
+                        else convert_to_hex(current_val)[1]
+                    )
+                    target_rgb = (
+                        Color(target_val).rgb
+                        if hasattr(target_val, "rgb")
+                        else convert_to_hex(target_val)[1]
+                    )
+                    self.current_values[attr] = current_rgb  # [r, g, b]
+                    self.target_values[attr] = target_rgb  # [r, g, b]
+                    self.is_color_attr[attr] = True
+                except Exception as e:
+                    warnings.warn(
+                        f"Invalid color for {attr}: {e}, skipping...",
+                        category=Warning,
+                        stacklevel=2,
+                    )
+                    continue
+            elif isinstance(current_val, (int, float)) and isinstance(
+                target_val, (int, float)
+            ):
+                self.current_values[attr] = float(current_val)
+                self.target_values[attr] = float(target_val)
+                self.is_color_attr[attr] = False
+            else:
                 warnings.warn(
-                    f"Attribute {attr} is not numeric, skipping...",
+                    f"Attribute {attr} is not numeric or a valid color, skipping...",
                     category=Warning,
                     stacklevel=2,
                 )
                 continue
-            if not isinstance(target_attributes[attr], (int, float)):
-                warnings.warn(
-                    f"Target attribute {attr} is not numeric, skipping...",
-                    category=Warning,
-                    stacklevel=2,
-                )
-                continue
-            self.target_values[attr] = float(target_attributes[attr])
 
         self.running = False
         self.curve = curve
@@ -190,8 +219,6 @@ class Animation:
 
         Args:
         """
-        for attr in self.target_values:
-            self.current_values[attr] = float(getattr(self.widget, attr))
         self.start_values = self.current_values.copy()
         self.running = True
         if not self.threadless:
@@ -213,9 +240,31 @@ class Animation:
         # Update all attributes
         updated_values = {}
         for attr in self.target_values:
-            start_val = self.start_values[attr]
-            target_val = self.target_values[attr]
-            updated_values[attr] = start_val + (target_val - start_val) * eased_t
+            if self.is_color_attr.get(attr, False):
+                # Interpolate RGB components
+                r = int(
+                    self.start_values[attr][0]
+                    + (self.target_values[attr][0] - self.start_values[attr][0])
+                    * eased_t
+                )
+                g = int(
+                    self.start_values[attr][1]
+                    + (self.target_values[attr][1] - self.start_values[attr][1])
+                    * eased_t
+                )
+                b = int(
+                    self.start_values[attr][2]
+                    + (self.target_values[attr][2] - self.start_values[attr][2])
+                    * eased_t
+                )
+                # Convert back to hex
+                hex_color = f"#{r:02x}{g:02x}{b:02x}"
+                updated_values[attr] = hex_color
+            else:
+                # Existing numeric interpolation
+                start_val = self.start_values[attr]
+                target_val = self.target_values[attr]
+                updated_values[attr] = start_val + (target_val - start_val) * eased_t
 
         # Apply final values at the last step
         if self.step == int(self.steps * self.duration):
