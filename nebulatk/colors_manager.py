@@ -5,10 +5,14 @@ class Color(str):
     def __init__(self, value):
         if value is not None:
             self.color = convert_to_hex(value)
+            self.rgb = convert_to_rgb(value)[:3]
+            self.trunc_hex = self.color[:7]
             self.rgba = convert_to_rgb(value)
         else:
             self.color = None
             self.rgba = None
+            self.rgb = None
+            self.trunc_hex = None
 
     def brighten(self, increment=10):
         """Brighten a color by an increment.
@@ -132,8 +136,8 @@ def convert_to_hex(color):
     # Convert to hex and return result
     if type(color) is tuple:
         if len(color) > 3:
-            return "#%02x%02x%02x%02x" % color.lower()
-        return "#%02x%02x%02xff" % color.lower()
+            return "#%02x%02x%02x%02x".lower() % color
+        return "#%02x%02x%02xff".lower() % color
 
 
 def convert_to_rgb(color):

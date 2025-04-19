@@ -305,7 +305,7 @@ class _widget_properties:
 
     @property
     def text_color(self):
-        return self._colors["text_color"].color
+        return self._colors["text_color"].trunc_hex
 
     @text_color.setter
     def text_color(self, value):
@@ -317,7 +317,7 @@ class _widget_properties:
 
     @property
     def active_text_color(self):
-        return self._colors["active_text_color"].color
+        return self._colors["active_text_color"].trunc_hex
 
     @active_text_color.setter
     def active_text_color(self, value):
@@ -1504,9 +1504,9 @@ class _window_internal(threading.Thread, Component):
         if x == widt or y == height:
             return None, None
         # To support transparency with RGBA, we need to check whether the rectangle includes transparency
-        if fill is not None and len(fill) > 7:
+        if fill is not None and fill[7:] != "ff":
             bg_image = image_manager.create_image(
-                fill, widt - x, height - y, outline, border_width, self
+                fill, int(widt - x), int(height - y), outline, border_width, self
             )
             id, image = self.create_image(x, y, bg_image, state=state)
             return id, image
@@ -1518,9 +1518,9 @@ class _window_internal(threading.Thread, Component):
                 y + border_width / 2,
                 widt - border_width / 2,
                 height - border_width / 2,
-                fill=fill,
+                fill=fill[:7],
                 width=border_width,
-                outline=outline,
+                outline=outline[:7],
                 state=state,
             ),
             None,

@@ -153,6 +153,14 @@ class Animation:
         self.duration = duration
         self.current_values = {}
         self.target_values = {}
+        self.update_current_values(target_attributes)
+        self.running = False
+        self.curve = curve
+        self.steps = steps
+        self.step = 0
+        self.looping = looping
+
+    def update_current_values(self, target_attributes: dict[str, float | str]):
 
         if not isinstance(target_attributes, dict):
             warnings.warn(
@@ -162,14 +170,14 @@ class Animation:
             )
             return
         for attr, target_val in target_attributes.items():
-            if not hasattr(widget, attr):
+            if not hasattr(self.widget, attr):
                 warnings.warn(
                     f"Widget does not have attribute: {attr}, skipping...",
                     category=Warning,
                     stacklevel=2,
                 )
                 continue
-            current_val = getattr(widget, attr)
+            current_val = getattr(self.widget, attr)
             # Check if this is a color attribute
             if isinstance(
                 target_val, (colors_manager.Color, str, list, tuple)
@@ -212,17 +220,12 @@ class Animation:
                 )
                 continue
 
-        self.running = False
-        self.curve = curve
-        self.steps = steps
-        self.step = 0
-        self.looping = looping
-
     def start(self) -> None:
         """Animate the widget to target coordinates with specified easing curve.
 
         Args:
         """
+        self.update_current_values(self.target_values)
         self.start_values = self.current_values.copy()
         self.running = True
         if not self.threadless:
