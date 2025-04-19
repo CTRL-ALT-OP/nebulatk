@@ -1163,12 +1163,14 @@ class Entry(_widget):
         self.cursor = (
             Label(
                 root=self,
-                width=2,
-                height=self.font[1] * 1.2 if hasattr(self, "font") else 16,
-                fill="black",
+                width=2,  # Thinner cursor for a more standard look
+                height=(
+                    self.font[1] * 1.2 if hasattr(self, "font") else 14
+                ),  # Match font height
+                fill="#000000",
                 border_width=0,
             )
-            .place(0, 5)
+            .place(0, 0)  # Adjusted initial placement
             .hide()
         )
 
@@ -1176,18 +1178,13 @@ class Entry(_widget):
         self.cursor_position = len(self.text)
         self._update_cursor_position()
 
-        # Create flashing cursor animation
+        # Create flashing cursor animation (blink effect)
         self.cursor_animation = animation_controller.Animation(
             self.cursor,
             {
-                "height": self.font[1] * 1.1 if hasattr(self, "font") else 14,
-                "y": (
-                    self.font[1] * 1.2 - self.font[1] * 1.1 + 5
-                    if hasattr(self, "font")
-                    else 6
-                ),
+                "fill": "#00000000",  # Fade out completely
             },
-            duration=0.5,
+            duration=0.6,  # Slightly slower blink for a more natural feel
             looping=True,
         )
         self.cursor_animation.start()
@@ -1200,15 +1197,32 @@ class Entry(_widget):
             self.text[:relative_cursor_position]
         )
 
+        # New calculation for justify = right
+        full_text_width = tkfont.Font(self.master.root, font=self.font).measure(
+            self.text
+        )
+
+        # Adjust cursor height to match font height
+        self.cursor.height = self.font[1] * 1.2 if hasattr(self, "font") else 14
+
+        # Center vertically based on entry height
+        self.cursor.y = (self.height - self.cursor.height) / 2
+
         if self.justify == "left":
-            self.cursor.x = text_width + 5
+            self.cursor.x = (
+                text_width - 1
+            )  # Adjust to be more centered between characters
         elif self.justify == "right":
-            self.cursor.x = self.width - text_width - 5
+            self.cursor.x = text_width + (
+                self.width - full_text_width - 1
+            )  # Adjust to be more centered between characters
         elif self.justify == "center":
             total_width = tkfont.Font(self.master.root, font=self.font).measure(
                 self.text
             )
-            self.cursor.x = self.width / 2 - total_width / 2 + text_width
+            self.cursor.x = (
+                self.width / 2 - total_width / 2 + text_width - 1
+            )  # Adjust to be more centered between characters
         self.update()
 
     def get(self):
@@ -1258,6 +1272,7 @@ class Entry(_widget):
     def clicked(self, x=None, y=None):
         super().clicked()
         self.cursor.show()
+        self.cursor.alpha = 1.0  # Ensure cursor is visible when clicked
 
         # If click position is provided, update cursor position
         if x is not None:
