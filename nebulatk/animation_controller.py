@@ -7,6 +7,13 @@ import warnings
 
 from collections.abc import Iterable
 
+try:
+    import colors_manager
+    import standard_methods
+except ImportError:
+    from . import colors_manager
+    from . import standard_methods
+
 
 class Curves:
     """
@@ -146,7 +153,6 @@ class Animation:
         self.duration = duration
         self.current_values = {}
         self.target_values = {}
-        self.is_color_attr = {}
 
         if not isinstance(target_attributes, dict):
             warnings.warn(
@@ -167,29 +173,31 @@ class Animation:
             target_val = target_attributes[attr]
 
             # Check if this is a color attribute
-            if isinstance(target_val, str) or hasattr(
-                target_val, "color"
+            if isinstance(
+                target_val, (colors_manager.Color, str, list, tuple)
             ):  # Hex or Color object
                 try:
-                    from .colors_manager import convert_to_hex, Color
-
                     # Convert current and target to RGB
-                    current_rgb = (
-                        Color(current_val).rgb
-                        if hasattr(current_val, "rgb")
-                        else convert_to_hex(current_val)[1]
-                    )
-                    target_rgb = (
-                        Color(target_val).rgb
-                        if hasattr(target_val, "rgb")
-                        else convert_to_hex(target_val)[1]
-                    )
-                    self.current_values[attr] = current_rgb  # [r, g, b]
-                    self.target_values[attr] = target_rgb  # [r, g, b]
-                    self.is_color_attr[attr] = True
+                    current_rgb = colors_manager.convert_to_rgb(current_val)
+                    if isinstance(target_val, colors_manager.Color):
+                        target_rgb = colors_manager.convert_to_rgb(target_val.color)
+                    else:
+                        target_rgb = colors_manager.convert_to_rgb(
+                            colors_manager.Color(target_val).color
+                        )
+
+                    if target_rgb is None:
+                        warnings.warn(
+                            f"Invalid color for {attr}: {target_rgb}, skipping...",
+                            category=Warning,
+                            stacklevel=2,
+                        )
+                        continue
+                    self.current_values[attr] = current_rgb  # [r, g, b, a]
+                    self.target_values[attr] = target_rgb  # [r, g, b, a]
                 except Exception as e:
                     warnings.warn(
-                        f"Invalid color for {attr}: {e}, skipping...",
+                        f"Invalid color for {attr}: {target_val}, {e}, skipping...",
                         category=Warning,
                         stacklevel=2,
                     )
@@ -199,7 +207,6 @@ class Animation:
             ):
                 self.current_values[attr] = float(current_val)
                 self.target_values[attr] = float(target_val)
-                self.is_color_attr[attr] = False
             else:
                 warnings.warn(
                     f"Attribute {attr} is not numeric or a valid color, skipping...",
@@ -240,26 +247,21 @@ class Animation:
         # Update all attributes
         updated_values = {}
         for attr in self.target_values:
-            if self.is_color_attr.get(attr, False):
+            if isinstance(self.target_values[attr], (list, tuple)):
                 # Interpolate RGB components
-                r = int(
-                    self.start_values[attr][0]
-                    + (self.target_values[attr][0] - self.start_values[attr][0])
-                    * eased_t
-                )
-                g = int(
-                    self.start_values[attr][1]
-                    + (self.target_values[attr][1] - self.start_values[attr][1])
-                    * eased_t
-                )
-                b = int(
-                    self.start_values[attr][2]
-                    + (self.target_values[attr][2] - self.start_values[attr][2])
-                    * eased_t
-                )
-                # Convert back to hex
-                hex_color = f"#{r:02x}{g:02x}{b:02x}"
-                updated_values[attr] = hex_color
+                updated_values[attr] = [
+                    standard_methods.clamp(
+                        int(
+                            self.start_values[attr][i]
+                            + (self.target_values[attr][i] - self.start_values[attr][i])
+                            * eased_t
+                        ),
+                        0,
+                        255,
+                    )
+                    for i in range(len(self.start_values[attr]))
+                ]
+
             else:
                 # Existing numeric interpolation
                 start_val = self.start_values[attr]
