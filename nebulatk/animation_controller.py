@@ -444,48 +444,30 @@ class AnimationGroup(threading.Thread):
 
     def run(self) -> None:
         """Run all animations in sequence."""
-        if self.looping:
-            while self.running:
-                for step in range(int(self.length * self.steps) + 1):
-                    if not self.running:
-                        break
-                    for animation, start_time in self.animations:
-                        if (
-                            start_time * self.steps
-                            <= step
-                            <= (start_time + animation.duration) * self.steps
-                        ):
-                            if not animation.running:
-                                animation.start()
-                            animation.tick()
-                        sleep(1 / self.steps)
-                for step in range(int(self.length * self.steps) + 1, 0, -1):
-                    if not self.running:
-                        break
-                    for animation, start_time in self.animations:
-                        if (
-                            start_time * self.steps
-                            <= step
-                            <= (start_time + animation.duration) * self.steps
-                        ):
-                            if not animation.running:
-                                animation.start()
-                            animation.tick(-1)
-                        sleep(1 / self.steps)
-        else:
-            for step in range(int(self.length * self.steps) + 1):
+
+        def run_animation_sequence(direction: int = 1) -> None:
+            """Helper function to run animation sequence in forward or reverse direction."""
+            end = int(self.length * self.steps) + 1
+            step_range = range(end) if direction == 1 else range(end, 0, -1)
+            for step in step_range:
                 if not self.running:
                     break
                 for animation, start_time in self.animations:
-                    if (
-                        start_time * self.steps
-                        <= step
-                        <= (start_time + animation.duration) * self.steps
-                    ):
+                    step_start = start_time * self.steps
+                    step_end = (start_time + animation.duration) * self.steps
+                    if step_start <= step <= step_end:
                         if not animation.running:
                             animation.start()
-                        animation.tick()
+                        animation.tick(direction)
                 sleep(1 / self.steps)
 
-            for anim in self.animations:
+        if not self.looping:
+            run_animation_sequence()  # Single forward pass
+
+        while self.looping and self.running:
+            run_animation_sequence(1)  # Forward pass
+            run_animation_sequence(-1)  # Reverse pass
+
+        if self.running:
+            for anim, _ in self.animations:
                 anim.stop()
