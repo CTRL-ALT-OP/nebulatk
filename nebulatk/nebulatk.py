@@ -1477,6 +1477,7 @@ class _window_internal(threading.Thread, Component):
         )
 
         self.children = []
+        self.active_animations = []
 
         self.active_keys = []
 
@@ -1701,6 +1702,7 @@ class _window_internal(threading.Thread, Component):
     # Handle window closing
     def close(self):
         self.running = False
+        self.close_animations()
         try:
             self.root.update()
             self.root.quit()
@@ -1712,6 +1714,15 @@ class _window_internal(threading.Thread, Component):
 
     def destroy(self):
         self.close()
+
+    def close_animations(self):
+        for anim in self.active_animations.copy():
+            anim.stop()
+            if anim.thread is not None:
+                while anim.thread.is_alive():
+                    self.root.update()
+                    sleep(0.01)
+                anim.thread.join()
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
@@ -1746,6 +1757,7 @@ class _window_internal(threading.Thread, Component):
 
         def close():
             self.running = False
+            self.close_animations()
             try:
                 self.root.quit()
             except Exception as e:

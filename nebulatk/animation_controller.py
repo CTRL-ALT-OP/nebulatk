@@ -150,6 +150,7 @@ class Animation:
         """
         self.threadless = threadless
         self.widget = widget
+        self.thread = None
         self.duration = duration
         self.current_values = {}
         self.target_values = {}
@@ -226,6 +227,7 @@ class Animation:
         Args:
         """
         self.update_current_values(self.target_values)
+        self.widget.master.active_animations.append(self)
         self.start_values = self.current_values.copy()
         self.running = True
         if not self.threadless:
@@ -235,6 +237,8 @@ class Animation:
     def stop(self):
         if self.running:
             self.running = False
+        if self in self.widget.master.active_animations:
+            self.widget.master.active_animations.remove(self)
 
     def join(self):
         if self.thread:
@@ -306,6 +310,8 @@ class Animation:
                 self.tick()
                 sleep(1 / self.steps)
 
+            self.stop()
+
 
 class AnimationGroup(threading.Thread):
     """A class to manage a sequence of animations with different curves and keyframes."""
@@ -346,6 +352,7 @@ class AnimationGroup(threading.Thread):
         self.steps = steps
         self.running = False
         self.looping = looping
+        self.thread = self
 
         for keyframe in keyframes:
             if not isinstance(keyframe, (Iterable, Animation)):
@@ -425,13 +432,15 @@ class AnimationGroup(threading.Thread):
         """Start the animation group."""
         self.running = True
         super().start()
+        self.widget.master.active_animations.append(self)
 
     def stop(self) -> None:
         """Stop the animation group."""
         if self.running:
             self.running = False
             for anim in self.animations:
-                anim.stop()
+                anim[0].stop()
+        self.widget.master.active_animations.remove(self)
 
     def run(self) -> None:
         """Run all animations in sequence."""
@@ -477,3 +486,6 @@ class AnimationGroup(threading.Thread):
                             animation.start()
                         animation.tick()
                 sleep(1 / self.steps)
+
+            for anim in self.animations:
+                anim.stop()
