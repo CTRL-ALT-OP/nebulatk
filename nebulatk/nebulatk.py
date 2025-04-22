@@ -1,6 +1,7 @@
 # Import tkinter and filedialog
 import threading
 import tkinter as tk
+from tkinter import font as tkfont
 
 # Import python standard packages
 from time import sleep
@@ -604,7 +605,9 @@ class _widget(_widget_properties, Component):
         self.active_text_color = active_text_color
 
         self.cursor_position = 0
-        self.slice = [0, 0]
+        self.slice = [0, len(self.text)]
+        self._selection_start = None
+        self._selection_end = None
 
     def __initialize_colors(
         self, fill, active_fill, hover_fill, active_hover_fill, no_image
@@ -703,33 +706,89 @@ class _widget(_widget_properties, Component):
     def typed(self, char):
         if not self.can_type:
             return
-        # We will be using self.entire_text, not self.text, as self.configure will change self.text to be the displayed slice of self.entire_text
-        if char.keysym == "BackSpace":
-            if self.cursor_position <= 0:
-                return
-            self.entire_text = (
-                self.entire_text[: self.cursor_position - 1]
-                + self.entire_text[self.cursor_position :]
+
+        def update_selection_bounds():
+            self._selection_start, self._selection_end = sorted(
+                [self._selection_start, self._selection_end]
             )
-            self.cursor_position -= 1
+
+        def delete_selection():
+            start, end = (
+                self._selection_start,
+                self._selection_end,
+            )
+            self.entire_text = self.entire_text[:start] + self.entire_text[end:]
+            self.cursor_position = self._selection_start
+            self._selection_start = self._selection_end = self.cursor_position
+            return start != end
+
+        def update_display():
+            self.end = len(self.entire_text)
+            max_length = fonts_manager.get_max_length(
+                self.master, self.entire_text, self.font, self.width, self.end
+            )
+            start_pos = max(
+                0,
+                min(
+                    self.cursor_position - max_length // 2,
+                    len(self.entire_text) - max_length,
+                ),
+            )
+            end_pos = min(start_pos + max_length, len(self.entire_text))
+            self.slice = [start_pos, end_pos]
+            display_text = self.entire_text[start_pos:end_pos]
+            if self.text_object is not None:
+                self.configure(text=display_text)
+            else:
+                self.text = display_text
+                self.update()
+
+        deleted_text = False
+
+        if (
+            char.keysym in ["BackSpace", "Delete"]
+            or char.char in fonts_manager.ALPHANUMERIC_PLUS
+        ):
+            update_selection_bounds()
+            deleted_text = delete_selection()
+
+        if char.keysym == "BackSpace":
+            if self.cursor_position > 0 and not deleted_text:
+                self.entire_text = (
+                    self.entire_text[: self.cursor_position - 1]
+                    + self.entire_text[self.cursor_position :]
+                )
+                self.cursor_position -= 1
+            self._selection_end = self.cursor_position
+            self._selection_start = self.cursor_position
+
         elif char.keysym == "Delete":
-            if self.cursor_position < len(self.entire_text):
+            if self.cursor_position < len(self.entire_text) and not deleted_text:
                 self.entire_text = (
                     self.entire_text[: self.cursor_position]
                     + self.entire_text[self.cursor_position + 1 :]
                 )
-            else:
-                return
+
         elif char.keysym == "Left":
             if self.cursor_position > 0:
                 self.cursor_position -= 1
+                self._selection_end = self.cursor_position
+            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+                self._selection_start = self.cursor_position
+
         elif char.keysym == "Right":
             if self.cursor_position < len(self.entire_text):
                 self.cursor_position += 1
+                self._selection_end = self.cursor_position
+            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+                self._selection_start = self.cursor_position
+
         elif char.keysym == "Home":
             self.cursor_position = 0
+
         elif char.keysym == "End":
             self.cursor_position = len(self.entire_text)
+
         elif char.char in fonts_manager.ALPHANUMERIC_PLUS:
             self.entire_text = (
                 self.entire_text[: self.cursor_position]
@@ -737,34 +796,13 @@ class _widget(_widget_properties, Component):
                 + self.entire_text[self.cursor_position :]
             )
             self.cursor_position += 1
+            self._selection_end = self.cursor_position
+            self._selection_start = self.cursor_position
+
         else:
-            return  # Ignore other special characters
+            return  # Ignore unsupported input
 
-        # Move end of display to the end of the text
-        self.end = len(self.entire_text)
-
-        # Get maximum length of characters we can fit in the widget
-        max_length = fonts_manager.get_max_length(
-            self.master, self.entire_text, self.font, self.width, self.end
-        )
-
-        # Calculate the text slice to display, keeping the cursor visible
-        start_pos = max(
-            0,
-            min(
-                self.cursor_position - max_length // 2,
-                len(self.entire_text) - max_length,
-            ),
-        )
-        end_pos = min(start_pos + max_length, len(self.entire_text))
-        self.slice = [start_pos, end_pos]
-        display_text = self.entire_text[start_pos:end_pos]
-        # Configure display text
-        if self.text_object is not None:
-            self.configure(text=display_text)
-        else:
-            self.text = display_text
-            self.update()
+        update_display()
 
     def change_active(self):
         pass
@@ -1189,9 +1227,13 @@ class Entry(_widget):
         )
         self.cursor_animation.start()
 
-    def _update_cursor_position(self):
-        from tkinter import font as tkfont
+        self._selection_bg = (
+            Frame(self, width=0, height=self.height, fill="#ADD8E6AA")
+            .place(0, 0)
+            .hide()
+        )
 
+    def _update_cursor_position(self):
         relative_cursor_position = self.cursor_position - self.slice[0]
         text_width = tkfont.Font(self.master.root, font=self.font).measure(
             self.text[:relative_cursor_position]
@@ -1229,7 +1271,6 @@ class Entry(_widget):
         return self.entire_text
 
     def _find_cursor_position_from_click(self, click_x):
-        from tkinter import font as tkfont
 
         # Convert to relative position within the entry
         rel_x = click_x - self.x
@@ -1267,6 +1308,8 @@ class Entry(_widget):
     def typed(self, char):
         super().typed(char)
 
+        self._update_selection_highlight()
+
         self._update_cursor_position()
 
     def clicked(self, x=None, y=None):
@@ -1280,10 +1323,77 @@ class Entry(_widget):
                 self._find_cursor_position_from_click(x) + self.slice[0]
             )
             self._update_cursor_position()
+        self._start_selection(x, y)
 
     def change_active(self):
         super().change_active()
         self.cursor.hide()
+
+    def dragging(self, x, y):
+        super().dragging(x, y)
+        self._update_selection(x, y)
+
+    def _start_selection(self, x, y):
+        """Begin text selection at the clicked position."""
+        self._selection_start = self.cursor_position
+        self._selection_end = self._selection_start
+        self._update_selection_highlight()
+
+    def _update_selection(self, x, y):
+        """Update selection as the mouse moves."""
+
+        self.cursor_position = self._find_cursor_position_from_click(x) + self.slice[0]
+        self._update_cursor_position()
+        self._selection_end = self.cursor_position
+        self._update_selection_highlight()
+
+    def _update_selection_highlight(self):
+        """Render the selection highlight on the canvas."""
+        if self._selection_start is not None and self._selection_end is not None:
+
+            start = min(
+                self._selection_start,
+                self._selection_end,
+            )
+            end = max(
+                self._selection_start,
+                self._selection_end,
+            )
+
+            start = max(self.slice[0], start) - self.slice[0]
+            end = min(self.slice[1], end) - self.slice[0]
+            total_width = tkfont.Font(self.master.root, font=self.font).measure(
+                self.text
+            )
+            sel_start_x = tkfont.Font(self.master.root, font=self.font).measure(
+                self.text[:start]
+            )
+            sel_start_x = (
+                self.width / 2 - total_width / 2 + sel_start_x
+            )  # Adjust to be more centered between characters
+
+            sel_end_x = sel_start_x + tkfont.Font(
+                self.master.root, font=self.font
+            ).measure(self.text[start:end])
+            self._selection_bg.width = sel_end_x - sel_start_x
+            self._selection_bg.x = sel_start_x
+            self._selection_bg.update()
+            self._selection_bg.show()
+        else:
+            self._selection_bg.hide()
+
+    def _get_char_offset(self, index):
+        """Helper to approximate pixel offset for a character index."""
+        # This is a placeholder; actual implementation depends on font metrics
+        return index * 10  # Approximate width per character
+
+    def get_selection(self):
+        """Return the currently selected text."""
+        if self._selection_start is not None and self._selection_end is not None:
+            start = min(self._selection_start, self._selection_end)
+            end = max(self._selection_start, self._selection_end)
+            return self.text[start:end]
+        return ""
 
 
 class Frame(_widget):
@@ -1367,6 +1477,8 @@ class _window_internal(threading.Thread, Component):
         )
 
         self.children = []
+
+        self.active_keys = []
 
         self.title = title
 
@@ -1501,6 +1613,13 @@ class _window_internal(threading.Thread, Component):
         # If a widget == active, we should send keystrokes to it
         if self.active:
             self.active.typed(event)
+
+        if event.keysym not in self.active_keys:
+            self.active_keys.append(event.keysym)
+
+    def typing_up(self, event):
+        if event.keysym in self.active_keys:
+            self.active_keys.remove(event.keysym)
 
     # NOTE: CREATION HANDLERS
     # These are necessary so that threading works properly with tcl
@@ -1638,6 +1757,7 @@ class _window_internal(threading.Thread, Component):
         self.canvas.bind("<Button-1>", self.click)
         self.canvas.bind("<ButtonRelease-1>", self.click_up)
         self.canvas.bind_all("<Key>", self.typing)
+        self.canvas.bind_all("<KeyRelease>", self.typing_up)
         self.root.protocol("WM_DELETE_WINDOW", close)
         self.canvas.bind("<Motion>", self.hover)
         self.canvas.bind("<Leave>", self.leave_window)
