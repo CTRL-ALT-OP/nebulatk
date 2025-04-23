@@ -789,12 +789,14 @@ class _widget(_widget_properties, Component):
         elif char.keysym == "Home":
             self.cursor_position = 0
             self._selection_end = self.cursor_position
-            self._selection_start = self.cursor_position
+            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+                self._selection_start = self.cursor_position
 
         elif char.keysym == "End":
             self.cursor_position = len(self.entire_text)
             self._selection_end = self.cursor_position
-            self._selection_start = self.cursor_position
+            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+                self._selection_start = self.cursor_position
 
         elif char.keysym == "c" and ctrl_or_cmd:
             update_selection_bounds()
