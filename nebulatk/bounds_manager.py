@@ -64,6 +64,9 @@ def check_hit(_object, x, y):
     if not _object.visible:
         return False
 
+    if not _object.can_focus:
+        return False
+
     hit = (int(x), int(y))
     a, b, c, d = standard_methods.get_rect_points(_object)
 

@@ -553,6 +553,8 @@ class _widget(_widget_properties, Component):
 
         self.initialized = True
 
+        self.can_focus = True
+
         self._images_initialized = {}
 
         self._scheduled_deletion = []
@@ -1252,6 +1254,8 @@ class Entry(_widget):
             .hide()
         )
 
+        self.cursor.can_focus = False
+
         # Position cursor at the end of text
         self.cursor_position = len(self.text)
         self._update_cursor_position()
@@ -1272,6 +1276,8 @@ class Entry(_widget):
             .place(0, 0)
             .hide()
         )
+
+        self._selection_bg.can_focus = False
 
     def _update_cursor_position(self):
         relative_cursor_position = self.cursor_position - self.slice[0]
