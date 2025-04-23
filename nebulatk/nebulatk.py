@@ -744,6 +744,9 @@ class _widget(_widget_properties, Component):
                 self.update()
 
         deleted_text = False
+        ctrl_or_cmd = {"Control_L", "Control_R", "Meta_L", "Meta_R"} & set(
+            self.master.active_keys
+        )
 
         if (
             char.keysym in ["BackSpace", "Delete"]
@@ -785,9 +788,44 @@ class _widget(_widget_properties, Component):
 
         elif char.keysym == "Home":
             self.cursor_position = 0
+            self._selection_end = self.cursor_position
+            self._selection_start = self.cursor_position
 
         elif char.keysym == "End":
             self.cursor_position = len(self.entire_text)
+            self._selection_end = self.cursor_position
+            self._selection_start = self.cursor_position
+
+        elif char.keysym == "c" and ctrl_or_cmd:
+            update_selection_bounds()
+            if self._selection_start != self._selection_end:
+                selected_text = self.entire_text[
+                    self._selection_start : self._selection_end
+                ]
+                self.master.root.clipboard_clear()
+                self.master.root.clipboard_append(selected_text)
+
+        elif char.keysym == "v" and ctrl_or_cmd:
+            update_selection_bounds()
+            try:
+                clipboard_text = self.master.root.clipboard_get()
+                delete_selection()
+            except tk.TclError:  # Empty clipboard
+                self._selection_start = self._selection_end = self.cursor_position
+                return
+
+            if clipboard_text:
+                self.entire_text = (
+                    self.entire_text[: self.cursor_position]
+                    + clipboard_text
+                    + self.entire_text[self.cursor_position :]
+                )
+                self.cursor_position += len(clipboard_text)
+                self._selection_start = self._selection_end = self.cursor_position
+
+        elif char.keysym == "a" and ctrl_or_cmd:
+            self._selection_start = 0
+            self._selection_end = self.cursor_position = len(self.entire_text)
 
         elif char.char in fonts_manager.ALPHANUMERIC_PLUS:
             self.entire_text = (
