@@ -1739,14 +1739,28 @@ class _window_internal(threading.Thread, Component):
     # Handle window closing
 
     def close(self):
-        # signal the poller → mainloop quits on next tick
+        # Signal the poller → mainloop quits on next tick
         self.running = False
 
-        # stop any running animations
+        # Stop any running animations
         self.close_animations()
 
-        # wait up to a second for the thread to finish
-        self.join(timeout=1)
+        import platform
+
+        is_windows = platform.system() == "Windows"
+
+        if is_windows:
+            # Windows-specific closing procedure
+            try:
+                self.root.update()
+                self.root.quit()
+                self.join()  # No timeout on Windows - wait for full closure
+            except Exception as e:
+                print(f"Window close exception: {e}")
+        else:
+            # Docker/Linux friendly closing procedure
+            # Wait up to a second for the thread to finish
+            self.join(timeout=1)
 
         if self.closing_command:
             self.closing_command()
@@ -1813,10 +1827,6 @@ class _window_internal(threading.Thread, Component):
         self.canvas.bind("<Motion>", self.hover)
         self.canvas.bind("<Leave>", self.leave_window)
 
-        # Run mainloop--- before: in _window_internal.run()
-        # Run mainloop
-        self.root.mainloop()
-
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly:
         def _poll():
@@ -1830,10 +1840,6 @@ class _window_internal(threading.Thread, Component):
         # now enter the *real* Tk mainloop
         self.root.mainloop()
         # once we exit mainloop, tear down:
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
 
         # print("exited")
         # NOTE: The following code is an alternative, but broken, method of running mainloop
