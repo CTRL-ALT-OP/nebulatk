@@ -1743,8 +1743,9 @@ class _window_internal(threading.Thread, Component):
         self.close_animations()
         try:
             self.root.update()
-            self.root.quit()
-            self.join()
+            self.root.after(0, self.root.quit)
+            self.join(timeout=1)
+            self.root.destroy()
         except Exception as e:
             print(e)
         if self.closing_command is not None:
@@ -1820,7 +1821,7 @@ class _window_internal(threading.Thread, Component):
         """while self.running:
             self.root.update_idletasks()
             self.root.update()
-            sleep(0.01)"""
+            sleep(0.001)"""
 
     # Add resize method to change window dimensions
     def resize(self, width=None, height=None):
