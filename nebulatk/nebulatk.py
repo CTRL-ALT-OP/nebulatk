@@ -1763,7 +1763,7 @@ class _window_internal(threading.Thread, Component):
                 while anim.thread.is_alive():
                     self.root.update()
                     sleep(0.01)
-                anim.thread.join()
+                anim.thread.join(timeout=1)
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
