@@ -1747,7 +1747,7 @@ class _window_internal(threading.Thread, Component):
 
         import platform
 
-        is_windows = platform.system() == "Windows"
+        is_windows = platform.system() != "Windows"
 
         if is_windows:
             # Windows-specific closing procedure
@@ -1833,10 +1833,10 @@ class _window_internal(threading.Thread, Component):
             if not self.running:
                 self.root.quit()
             else:
-                self.root.after(100, _poll)
+                self.root.after(50, _poll)
 
         # start polling ~10 times a second
-        self.root.after(100, _poll)
+        self.root.after(50, _poll)
         # now enter the *real* Tk mainloop
         self.root.mainloop()
         # once we exit mainloop, tear down:
