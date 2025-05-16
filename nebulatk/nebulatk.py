@@ -1745,6 +1745,8 @@ class _window_internal(threading.Thread, Component):
         # stop any running animations
         self.close_animations()
 
+        self.root.quit()
+
         # wait up to a second for the thread to finish
         self.join(timeout=1)
 

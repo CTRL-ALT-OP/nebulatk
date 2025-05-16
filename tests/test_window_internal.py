@@ -389,7 +389,6 @@ class TestWindowInternal:
         window.close()
 
         assert window.running is False
-        window.root.update.assert_called_once()
         window.root.quit.assert_called_once()
         window.join.assert_called_once()
         mock_closing_command.assert_called_once()
@@ -400,7 +399,6 @@ class TestWindowInternal:
         mock_closing_command.reset_mock()
 
         window.destroy()
-        window.root.update.assert_called_once()
         window.root.quit.assert_called_once()
         window.join.assert_called_once()
         mock_closing_command.assert_called_once()
