@@ -37,15 +37,11 @@ def test_basic_animation(canvas: ntk.Window) -> None:
 
     # Test animation with multiple attributes (x, y, and width)
     target_attributes = {"x": 100.0, "y": 50.0, "width": 150.0}
-    print("reached")
     animation = animation_controller.Animation(
         widget=button, target_attributes=target_attributes, duration=0.1, steps=10
     )
-    print("reached")
     animation.start()
-    print("reached")
     animation.join(timeout=1)  # Wait for animation to complete
-    print("reached")
     # Verify all animated attributes
     for attr, target in target_attributes.items():
         assert (
