@@ -1813,6 +1813,8 @@ class _window_internal(threading.Thread, Component):
         self.canvas.bind("<Motion>", self.hover)
         self.canvas.bind("<Leave>", self.leave_window)
 
+        self.root.mainloop()
+
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly:
         def _poll():
