@@ -1739,11 +1739,13 @@ class _window_internal(threading.Thread, Component):
     # Handle window closing
 
     def close(self):
-        # Signal the poller → mainloop quits on next tick
+        # signal the poller → mainloop quits on next tick
         self.running = False
 
-        # Stop any running animations
+        # stop any running animations
         self.close_animations()
+
+        # wait up to a second for the thread to finish
         self.join(timeout=1)
 
         if self.closing_command:
