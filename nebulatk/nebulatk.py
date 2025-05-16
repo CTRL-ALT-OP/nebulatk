@@ -1760,7 +1760,7 @@ class _window_internal(threading.Thread, Component):
         for anim in self.active_animations.copy():
             anim.stop()
             if anim.thread is not None:
-                while anim.thread.is_alive():
+                if anim.thread.is_alive():
                     self.root.update()
                     sleep(0.01)
                 anim.thread.join(timeout=1)
