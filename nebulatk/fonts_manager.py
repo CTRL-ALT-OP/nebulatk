@@ -1,6 +1,7 @@
 from tkinter import font as tkfont
 from tkinter import Tk
 import math
+from PIL import ImageFont
 
 ctypes_available = True
 try:
@@ -72,7 +73,7 @@ def get_font_metrics(root, font, metric="linespace"):
 
 def loadfont(fontpath, private=True, enumerable=False):
     if not ctypes_available:
-        return
+        return ImageFont.truetype(fontpath)
     """Load a font into resources so that a process can use it
 
     Args:
