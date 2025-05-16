@@ -1745,6 +1745,8 @@ class _window_internal(threading.Thread, Component):
         # stop any running animations
         self.close_animations()
 
+        self.root.quit()
+
         # wait up to a second for the thread to finish
         self.join(timeout=1)
 
@@ -1817,22 +1819,6 @@ class _window_internal(threading.Thread, Component):
 
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly:
-        """def _poll():
-            if not self.running:
-                self.root.quit()
-            else:
-                self.root.after(50, _poll)
-
-        # start polling ~10 times a second
-        self.root.after(50, _poll)
-        # now enter the *real* Tk mainloop
-        self.root.mainloop()
-        # once we exit mainloop, tear down:
-
-        try:
-            self.root.destroy()
-        except Exception:
-            pass"""
         # print("exited")
         # NOTE: The following code is an alternative, but broken, method of running mainloop
         """while self.running:
