@@ -93,7 +93,7 @@ class TestIntegration:
             steps=10,
         )
         animation.start()
-        animation.join()
+        animation.join(timeout=1)
 
         # Button should have moved
         assert button.x == 100

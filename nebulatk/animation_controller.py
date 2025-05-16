@@ -243,9 +243,9 @@ class Animation:
         if self in self.widget.master.active_animations:
             self.widget.master.active_animations.remove(self)
 
-    def join(self):
+    def join(self, timeout):
         if self.thread:
-            return self.thread.join()
+            return self.thread.join(timeout)
 
     def tick(self, direction: int = 1):
         t = self.step / (self.steps * self.duration)

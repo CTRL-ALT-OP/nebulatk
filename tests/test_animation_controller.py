@@ -62,7 +62,7 @@ def test_basic_animation(canvas: ntk.Window) -> None:
         widget=button, target_attributes=target_attributes, duration=0.1, steps=10
     )
     animation.start()
-    animation.join()  # Wait for animation to complete
+    animation.join(timeout=1)  # Wait for animation to complete
 
     # Verify all animated attributes
     for attr, target in target_attributes.items():
@@ -102,7 +102,7 @@ def test_invalid_animation(canvas: ntk.Window) -> None:
                     steps=10,
                 )
     animation.start()
-    animation.join()  # Wait for animation to complete
+    animation.join(timeout=1)  # Wait for animation to complete
 
     # Verify all animated attributes
     for attr, target in actual_attributes.items():
@@ -127,7 +127,7 @@ def test_stop_animation(canvas: ntk.Window) -> None:
     )
     animation.start()
     animation.stop()
-    animation.join()
+    animation.join(timeout=1)
     assert button.x == 0
     assert button.y == 100
 
@@ -155,7 +155,7 @@ def test_easing_functions(canvas: ntk.Window) -> None:
             curve=getattr(animation_controller.Curves, curve),
         )
         animation.start()
-        animation.join()
+        animation.join(timeout=1)
         assert button.x == 100
         assert button.y == 50
 
@@ -178,7 +178,7 @@ def test_animation_group(canvas: ntk.Window) -> None:
         steps=10,
     )
     animation_group.start()
-    animation_group.join()
+    animation_group.join(timeout=1)
     assert button.x == 0
     assert button.y == 0
 
@@ -202,7 +202,7 @@ def test_animation_group_with_animation_instances(canvas: ntk.Window) -> None:
         steps=10,
     )
     animation_group.start()
-    animation_group.join()
+    animation_group.join(timeout=1)
     assert button.x == 100
     assert button.y == 50
 
