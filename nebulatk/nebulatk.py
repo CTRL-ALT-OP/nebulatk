@@ -1,7 +1,6 @@
 # Import tkinter and filedialog
 import threading
 import tkinter as tk
-from tkinter import font as tkfont
 
 # Import python standard packages
 from time import sleep
@@ -1281,14 +1280,12 @@ class Entry(_widget):
 
     def _update_cursor_position(self):
         relative_cursor_position = self.cursor_position - self.slice[0]
-        text_width = tkfont.Font(self.master.root, font=self.font).measure(
-            self.text[:relative_cursor_position]
+        text_width = fonts_manager.measure_text(
+            self.master, self.font, self.text[:relative_cursor_position]
         )
 
         # New calculation for justify = right
-        full_text_width = tkfont.Font(self.master.root, font=self.font).measure(
-            self.text
-        )
+        full_text_width = fonts_manager.measure_text(self.master, self.font, self.text)
 
         # Adjust cursor height to match font height
         self.cursor.height = self.font[1] * 1.2 if hasattr(self, "font") else 14
@@ -1305,9 +1302,7 @@ class Entry(_widget):
                 self.width - full_text_width - 1
             )  # Adjust to be more centered between characters
         elif self.justify == "center":
-            total_width = tkfont.Font(self.master.root, font=self.font).measure(
-                self.text
-            )
+            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
             self.cursor.x = (
                 self.width / 2 - total_width / 2 + text_width - 1
             )  # Adjust to be more centered between characters
@@ -1323,27 +1318,24 @@ class Entry(_widget):
 
         # Adjust for text justification
         if self.justify == "center":
-            total_width = tkfont.Font(self.master.root, font=self.font).measure(
-                self.text
-            )
+            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
             rel_x = rel_x - (self.width / 2 - total_width / 2)
         elif self.justify == "right":
-            total_width = tkfont.Font(self.master.root, font=self.font).measure(
-                self.text
-            )
+            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
             rel_x = rel_x - (self.width - total_width - 5)
         elif self.justify == "left":
             rel_x = rel_x - 5
 
         # Find the closest character position
-        font_obj = tkfont.Font(self.master.root, font=self.font)
 
         # Try each position to find closest match
         closest_pos = 0
         min_diff = float("inf")
 
         for pos in range(len(self.text) + 1):
-            pos_width = font_obj.measure(self.text[:pos])
+            pos_width = fonts_manager.measure_text(
+                self.master, self.font, self.text[:pos]
+            )
             diff = abs(pos_width - rel_x)
 
             if diff < min_diff:
@@ -1408,19 +1400,17 @@ class Entry(_widget):
 
             start = max(self.slice[0], start) - self.slice[0]
             end = min(self.slice[1], end) - self.slice[0]
-            total_width = tkfont.Font(self.master.root, font=self.font).measure(
-                self.text
-            )
-            sel_start_x = tkfont.Font(self.master.root, font=self.font).measure(
-                self.text[:start]
+            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
+            sel_start_x = fonts_manager.measure_text(
+                self.master, self.font, self.text[:start]
             )
             sel_start_x = (
                 self.width / 2 - total_width / 2 + sel_start_x
             )  # Adjust to be more centered between characters
 
-            sel_end_x = sel_start_x + tkfont.Font(
-                self.master.root, font=self.font
-            ).measure(self.text[start:end])
+            sel_end_x = sel_start_x + fonts_manager.measure_text(
+                self.master, self.font, self.text[start:end]
+            )
             self._selection_bg.width = sel_end_x - sel_start_x
             self._selection_bg.x = sel_start_x
             self._selection_bg.update()

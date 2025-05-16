@@ -1,4 +1,5 @@
 from tkinter import font as tkfont
+from tkinter import Tk
 import math
 
 ctypes_available = True
@@ -25,6 +26,48 @@ class Font:
         elif type(font) in (list, tuple):
             # Assume font is (font, size)
             self.font = font
+
+
+def measure_text(root, font, text):
+    """Measure the width of text with the given font.
+
+    Args:
+        root: The root tk window or nebulatk window (.root attribute)
+        font: A tuple containing the font name, size, and optionally a style
+        text (str): The text to measure
+
+    Returns:
+        int: The width of the text in pixels
+    """
+    # Generate full length font tuple
+    if len(font) < 3:
+        font = (font[0], font[1], tkfont.NORMAL)
+
+    if not isinstance(root, Tk):
+        root = root.root
+
+    return tkfont.Font(root, font=font).measure(text)
+
+
+def get_font_metrics(root, font, metric="linespace"):
+    """Get font metrics such as linespace.
+
+    Args:
+        root: The root tk window or nebulatk window (.root attribute)
+        font: A tuple containing the font name, size, and optionally a style
+        metric (str): The metric to retrieve. Defaults to "linespace"
+
+    Returns:
+        int: The requested metric value
+    """
+    # Generate full length font tuple
+    if len(font) < 3:
+        font = (font[0], font[1], tkfont.NORMAL)
+
+    if not isinstance(root, Tk):
+        root = root.root
+
+    return tkfont.Font(root, font=font).metrics(metric)
 
 
 def loadfont(fontpath, private=True, enumerable=False):
@@ -92,30 +135,22 @@ def get_max_font_size(root, font, width, height, text):
         font = (font[0], font[1], tkfont.NORMAL)
 
     # Generate starting width of text given the font size
-    curr_width = tkfont.Font(
-        root.root, font=(font[0], size, font[2]), text=text
-    ).measure(text)
+    curr_width = measure_text(root, (font[0], size, font[2]), text)
 
     # Generate starting height of text given the font size2
-    curr_height = tkfont.Font(
-        root.root, font=(font[0], size, font[2]), text=text
-    ).metrics("linespace")
+    curr_height = get_font_metrics(root, (font[0], size, font[2]), "linespace")
 
     # Gradually increase size until the width of the text exceeds the bounds
     while curr_width < width:
         prev_size = size
         size += 1
-        curr_width = tkfont.Font(
-            root.root, font=(font[0], size, font[2]), text=text
-        ).measure(text)
+        curr_width = measure_text(root, (font[0], size, font[2]), text)
 
     # Gradually increase size2 until the height of the text exceeds the bounds, or until size2 reaches size1
     while curr_height < height and size2 <= prev_size:
         prev_size2 = size2
         size2 += 1
-        curr_height = tkfont.Font(
-            root.root, font=(font[0], size2, font[2]), text=text
-        ).metrics("linespace")
+        curr_height = get_font_metrics(root, (font[0], size2, font[2]), "linespace")
 
     # Final font
     # font = tkfont.Font(root.root, font=(font[0], prev_size2, font[2]), text=text)
@@ -142,16 +177,10 @@ def get_min_button_size(root, font, text):
         font = (font[0], font[1], tkfont.NORMAL)
 
     # Minimum width is 110% of the width of the given font and text
-    width = int(
-        math.ceil(tkfont.Font(root.root, font=font, text=text).measure(text) / 0.9)
-    )
+    width = int(math.ceil(measure_text(root, font, text) / 0.9))
 
     # Minimum height is 110% of the height of the given font and text
-    height = int(
-        math.ceil(
-            tkfont.Font(root.root, font=font, text=text).metrics("linespace") / 0.9
-        )
-    )
+    height = int(math.ceil(get_font_metrics(root, font, "linespace") / 0.9))
 
     return width, height
 
@@ -178,16 +207,12 @@ def get_max_length(root, text, font, width, end=0):
     length = len(text)
 
     # Get the current width of the slice
-    curr_width = tkfont.Font(
-        root.root, font=font, text=text[end - length : end]
-    ).measure(text[end - length : end])
+    curr_width = measure_text(root, font, text[end - length : end])
 
     # Decrease length of slice until it fits
     while curr_width > width and length > 0:
         length -= 1
-        curr_width = tkfont.Font(
-            root.root, font=font, text=text[end - length : end]
-        ).measure(text[end - length : end])
+        curr_width = measure_text(root, font, text[end - length : end])
 
     # Return slice length
     return length
