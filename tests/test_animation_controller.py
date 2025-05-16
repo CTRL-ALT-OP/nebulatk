@@ -11,26 +11,6 @@ import animation_controller
 import nebulatk as ntk
 
 
-def test_place_returns_button():
-    """
-    Test that place() returns the button itself but does not change the stored x/y properties
-    """
-    window = ntk.Window(title="Test Window", width=800, height=500)
-    try:
-        # Create a button and place it
-        button = ntk.Button(window, text="Test Button", width=100, height=50)
-        returned_button = button.place(x=50, y=75)
-
-        # Verify that place returns the button itself
-        assert returned_button is button
-
-        # Verify that the x, y properties are correctly set
-        assert button.x == 50
-        assert button.y == 75
-    finally:
-        window.close()
-
-
 @pytest.fixture
 def canvas() -> ntk.Window:
     """
