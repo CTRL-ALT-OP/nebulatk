@@ -11,6 +11,26 @@ import animation_controller
 import nebulatk as ntk
 
 
+def test_place_returns_button():
+    """
+    Test that place() returns the button itself but does not change the stored x/y properties
+    """
+    window = ntk.Window(title="Test Window", width=800, height=500)
+    try:
+        # Create a button and place it
+        button = ntk.Button(window, text="Test Button", width=100, height=50)
+        returned_button = button.place(x=50, y=75)
+
+        # Verify that place returns the button itself
+        assert returned_button is button
+
+        # Verify that the x, y properties are correctly set
+        assert button.x == 50
+        assert button.y == 75
+    finally:
+        window.close()
+
+
 @pytest.fixture
 def canvas() -> ntk.Window:
     """
@@ -31,9 +51,9 @@ def test_basic_animation(canvas: ntk.Window) -> None:
     Args:
         canvas: Test window fixture
     """
-    button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
-        x=0, y=100
-    )
+    # Create button first, then place it
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=0, y=100)
 
     # Test animation with multiple attributes (x, y, and width)
     target_attributes = {"x": 100.0, "y": 50.0, "width": 150.0}
@@ -58,9 +78,9 @@ def test_invalid_animation(canvas: ntk.Window) -> None:
     Args:
         canvas: Test window fixture
     """
-    button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
-        x=100, y=0
-    )
+    # Create button first, then place it
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=100, y=0)
 
     # Test animation with invalid attributes (x, y, and width)
     target_attributes = {
@@ -98,9 +118,9 @@ def test_stop_animation(canvas: ntk.Window) -> None:
     Args:
         canvas: Test window fixture
     """
-    button = ntk.Button(canvas, text="Test Button", width=100, height=50).place(
-        x=0, y=100
-    )
+    # Create button first, then place it
+    button = ntk.Button(canvas, text="Test Button", width=100, height=50)
+    button.place(x=0, y=100)
 
     animation = animation_controller.Animation(
         widget=button, target_attributes={"x": 100.0, "y": 50.0}, duration=0.1, steps=10

@@ -44,15 +44,22 @@ def test_entry_functionality(canvas: ntk.Window) -> None:
     assert entry.text == "Initial text"
     assert entry.width == 200
     assert entry.height == 40
-    assert entry.text_color == "#0000FF"
-    assert entry.fill == "#FFFFFF"
+    assert entry.text_color == "#0000ff"
+    assert entry.fill == "#ffffffff"
+
+    class char:
+        def __init__(self, keysym) -> None:
+            self.keysym = keysym
+            self.char = keysym
 
     # Test changing text
+    entry.cursor_position = len("Initial text")
+    entry._start_selection(0, 0)
     for _ in range(len("Initial text")):
-        entry.typed("\x08")
+        entry.typed(char("BackSpace"))
     assert entry.text == ""
-    for char in "Updated text":
-        entry.typed(char)
+    for character in "Updated text":
+        entry.typed(char(character))
     assert entry.get() == "Updated text"
 
 

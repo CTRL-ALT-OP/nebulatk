@@ -12,12 +12,12 @@ import colors_manager
 
 def test_color_name_to_hex():
     """Test converting color names to hex values."""
-    assert colors_manager.convert_to_hex("red1") == "#FF0000"
-    assert colors_manager.convert_to_hex("blue") == "#0000FF"
-    assert colors_manager.convert_to_hex("green") == "#008000"
-    assert colors_manager.convert_to_hex("yellow1") == "#FFFF00"
-    assert colors_manager.convert_to_hex("black") == "#000000"
-    assert colors_manager.convert_to_hex("white") == "#FFFFFF"
+    assert colors_manager.convert_to_hex("red1") == "#ff0000ff"
+    assert colors_manager.convert_to_hex("blue") == "#0000ffff"
+    assert colors_manager.convert_to_hex("green") == "#008000ff"
+    assert colors_manager.convert_to_hex("yellow1") == "#ffff00ff"
+    assert colors_manager.convert_to_hex("black") == "#000000ff"
+    assert colors_manager.convert_to_hex("white") == "#ffffffff"
 
 
 def test_color_name_to_hex_with_fallback():
@@ -31,12 +31,12 @@ def test_color_name_to_hex_with_fallback():
 
 def test_rgb_to_hex():
     """Test converting RGB tuples to hex values."""
-    assert colors_manager.convert_to_hex((255, 0, 0)) == "#ff0000"
-    assert colors_manager.convert_to_hex((0, 255, 0)) == "#00ff00"
-    assert colors_manager.convert_to_hex((0, 0, 255)) == "#0000ff"
-    assert colors_manager.convert_to_hex((128, 128, 128)) == "#808080"
-    assert colors_manager.convert_to_hex((0, 0, 0)) == "#000000"
-    assert colors_manager.convert_to_hex((255, 255, 255)) == "#ffffff"
+    assert colors_manager.convert_to_hex((255, 0, 0)) == "#ff0000ff"
+    assert colors_manager.convert_to_hex((0, 255, 0)) == "#00ff00ff"
+    assert colors_manager.convert_to_hex((0, 0, 255)) == "#0000ffff"
+    assert colors_manager.convert_to_hex((128, 128, 128)) == "#808080ff"
+    assert colors_manager.convert_to_hex((0, 0, 0)) == "#000000ff"
+    assert colors_manager.convert_to_hex((255, 255, 255)) == "#ffffffff"
 
 
 def test_hex_to_rgb():

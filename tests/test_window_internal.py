@@ -1,16 +1,13 @@
 import sys
 import os
 import pytest
-import tkinter as tk
 from unittest.mock import MagicMock, patch
-from time import sleep
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
 # Import nebulatk modules
-import nebulatk as ntk
 from nebulatk import _window_internal
 
 
@@ -73,15 +70,29 @@ class TestWindowInternal:
         mock_image.tk_image.assert_called_once_with(window)
 
     @patch("tkinter.Tk")
-    def test_create_rectangle(self, mock_tk):
+    @patch("PIL.ImageTk.PhotoImage")
+    @patch("nebulatk.image_manager.create_image")
+    def test_create_rectangle(self, mock_create_image, mock_photo_image, mock_tk):
         """Test create_rectangle method."""
+        # Setup mock for Tk instance
+        mock_tk_instance = MagicMock()
+        mock_tk.return_value = mock_tk_instance
+
+        # Setup mock for PIL PhotoImage
+        mock_photo_instance = MagicMock()
+        mock_photo_image.return_value = mock_photo_instance
+
         window = _window_internal(width=800, height=600)
         window.canvas = MagicMock()
         window.canvas.create_rectangle.return_value = 456
+        window.root = MagicMock()  # Add mock for root
+
+        # Ensure the fill color doesn't have transparency
+        fill_color = "#FF0000ff"  # Fully opaque red
 
         # Test with opaque fill color
         rect_id, _ = window.create_rectangle(
-            10, 10, 110, 60, fill="#FF0000", border_width=2, outline="#000000"
+            10, 10, 110, 60, fill=fill_color, border_width=2, outline="#000000ff"
         )
 
         assert rect_id == 456
@@ -97,11 +108,21 @@ class TestWindowInternal:
         )
 
     @patch("tkinter.Tk")
-    def test_create_rectangle_with_transparency(self, mock_tk):
+    @patch("PIL.ImageTk.PhotoImage")
+    def test_create_rectangle_with_transparency(self, mock_photo_image, mock_tk):
         """Test create_rectangle method with transparent fill."""
+        # Setup mock for Tk instance
+        mock_tk_instance = MagicMock()
+        mock_tk.return_value = mock_tk_instance
+
+        # Setup mock for PIL PhotoImage
+        mock_photo_instance = MagicMock()
+        mock_photo_image.return_value = mock_photo_instance
+
         window = _window_internal(width=800, height=600)
         window.canvas = MagicMock()
         window.canvas.create_image.return_value = 789
+        window.root = MagicMock()  # Add mock for root
 
         # Test with transparent fill color (RGBA)
         with patch("nebulatk.image_manager.create_image") as mock_create_image:
@@ -202,7 +223,9 @@ class TestWindowInternal:
         window = _window_internal(width=800, height=600)
         window.root = MagicMock()
 
-        callback = lambda event: None
+        def callback(event):
+            pass
+
         window.bind("<Key>", callback)
 
         window.root.bind.assert_called_once_with("<Key>", callback)
@@ -274,7 +297,7 @@ class TestWindowInternal:
 
         # Test typing
         window.typing(mock_event)
-        mock_active.typed.assert_called_once_with(mock_event.char)
+        mock_active.typed.assert_called_once_with(mock_event)
 
         # Test typing with no active widget
         mock_active.typed.reset_mock()

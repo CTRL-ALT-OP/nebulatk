@@ -156,6 +156,7 @@ class Animation:
         self.target_values = {}
         self.update_current_values(target_attributes)
         self.running = False
+        self.manually_stopped = False
         self.curve = curve
         self.steps = steps
         self.step = 0
@@ -237,6 +238,8 @@ class Animation:
     def stop(self):
         if self.running:
             self.running = False
+            # Set a flag to indicate that the animation was stopped manually
+            self.manually_stopped = True
         if self in self.widget.master.active_animations:
             self.widget.master.active_animations.remove(self)
 
@@ -274,14 +277,29 @@ class Animation:
 
         # Apply final values at the last step
         if self.step == int(self.steps * self.duration):
-            updated_values = self.target_values
+            updated_values = self.target_values.copy()
 
-            if self.widget.master:
-                self.widget.master.update()
+        # Track which attributes need visual updates
+        needs_position_update = False
+        needs_size_update = False
+
+        if "x" in updated_values or "y" in updated_values:
+            needs_position_update = True
+
+        if "width" in updated_values or "height" in updated_values:
+            needs_size_update = True
 
         # Update widget attributes
         for attr, value in updated_values.items():
             setattr(self.widget, attr, value)
+
+        # Force a visual update if needed
+        if needs_position_update or needs_size_update:
+            new_x = self.widget.x
+            new_y = self.widget.y
+
+            # Force an update by calling place which will update the visual representation
+            self.widget.place(new_x, new_y)
 
         self.current_values = updated_values
         self.widget.update()
@@ -291,6 +309,9 @@ class Animation:
         """
         Run the animation loop, updating all specified attributes.
         """
+        # Initialize the manually_stopped flag
+        self.manually_stopped = False
+
         if self.looping:
             while self.running:
                 for _ in range(int(self.steps * self.duration)):
@@ -309,6 +330,24 @@ class Animation:
                     break
                 self.tick()
                 sleep(1 / self.steps)
+
+            # Only apply final values if the animation wasn't manually stopped
+            if not self.manually_stopped:
+                # Ensure final values are set directly at the end
+                for attr, value in self.target_values.items():
+                    # Handle special attributes like x and y that need special handling
+                    if attr == "x":
+                        self.widget._position[0] = value
+                    elif attr == "y":
+                        self.widget._position[1] = value
+                    else:
+                        setattr(self.widget, attr, value)
+
+                # Force a final visual update
+                if "x" in self.target_values or "y" in self.target_values:
+                    self.widget.place(self.widget.x, self.widget.y)
+                else:
+                    self.widget.update()
 
             self.stop()
 

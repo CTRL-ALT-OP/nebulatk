@@ -607,8 +607,8 @@ class _widget(_widget_properties, Component):
 
         self.cursor_position = 0
         self.slice = [0, len(self.text)]
-        self._selection_start = None
-        self._selection_end = None
+        self._selection_start = 0
+        self._selection_end = 0
 
     def __initialize_colors(
         self, fill, active_fill, hover_fill, active_hover_fill, no_image
@@ -709,6 +709,7 @@ class _widget(_widget_properties, Component):
             return
 
         def update_selection_bounds():
+
             self._selection_start, self._selection_end = sorted(
                 [self._selection_start, self._selection_end]
             )

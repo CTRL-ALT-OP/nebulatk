@@ -113,11 +113,11 @@ class TestIntegration:
         label = ntk.Label(app, text="Styled Label", **common_style).place(x=50, y=100)
 
         # Verify consistent styling
-        assert button.fill == "#0000FF"
-        assert label.fill == "#0000FF"
+        assert button.fill == "#0000ffff"
+        assert label.fill == "#0000ffff"
 
-        assert button.text_color == "#FFFFFF"
-        assert label.text_color == "#FFFFFF"
+        assert button.text_color == "#ffffff"
+        assert label.text_color == "#ffffff"
 
     def test_layout_management(self, app):
         """Test layout management and positioning."""

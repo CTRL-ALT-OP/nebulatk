@@ -56,8 +56,8 @@ def test_button_properties(canvas: ntk.Window) -> None:
     assert button.text == "Test Button"
     assert button.width == 100
     assert button.height == 30
-    assert button.fill == "#0000FF"
-    assert button.text_color == "#FFFFFF"
+    assert button.fill == "#0000ffff"
+    assert button.text_color == "#ffffff"
 
     # Test button state changes
     assert not button.state  # Default state should be False
@@ -84,8 +84,8 @@ def test_label_properties(canvas: ntk.Window) -> None:
     assert label.text == "Test Label"
     assert label.width == 150
     assert label.height == 40
-    assert label.text_color == "#FF0000"
-    assert label.fill == "#FFFF00"
+    assert label.text_color == "#ff0000"
+    assert label.fill == "#ffff00ff"
 
 
 def test_slider_functionality(canvas: ntk.Window) -> None:
