@@ -1490,6 +1490,7 @@ class _window_internal(threading.Thread, Component):
     ):
         # Initialize the thread
         super().__init__()
+        self.daemon = True
 
         # Initialize the bounds
         # Bounds == structured as:
