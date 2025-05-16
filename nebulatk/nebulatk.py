@@ -1745,8 +1745,6 @@ class _window_internal(threading.Thread, Component):
         # stop any running animations
         self.close_animations()
 
-        self.root.quit()
-
         # wait up to a second for the thread to finish
         self.join(timeout=1)
 
@@ -1760,10 +1758,10 @@ class _window_internal(threading.Thread, Component):
         for anim in self.active_animations.copy():
             anim.stop()
             if anim.thread is not None:
-                if anim.thread.is_alive():
+                while anim.thread.is_alive():
                     self.root.update()
                     sleep(0.01)
-                anim.thread.join(timeout=1)
+                anim.thread.join()
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
