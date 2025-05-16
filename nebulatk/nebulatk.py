@@ -1744,23 +1744,7 @@ class _window_internal(threading.Thread, Component):
 
         # Stop any running animations
         self.close_animations()
-
-        import platform
-
-        is_windows = platform.system() != "Windows"
-
-        if is_windows:
-            # Windows-specific closing procedure
-            try:
-                self.root.update()
-                self.root.quit()
-                self.join()  # No timeout on Windows - wait for full closure
-            except Exception as e:
-                print(f"Window close exception: {e}")
-        else:
-            # Docker/Linux friendly closing procedure
-            # Wait up to a second for the thread to finish
-            self.join(timeout=1)
+        self.join(timeout=1)
 
         if self.closing_command:
             self.closing_command()
