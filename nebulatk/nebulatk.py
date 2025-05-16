@@ -1817,7 +1817,7 @@ class _window_internal(threading.Thread, Component):
 
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly:
-        def _poll():
+        """def _poll():
             if not self.running:
                 self.root.quit()
             else:
@@ -1832,7 +1832,7 @@ class _window_internal(threading.Thread, Component):
         try:
             self.root.destroy()
         except Exception:
-            pass
+            pass"""
         # print("exited")
         # NOTE: The following code is an alternative, but broken, method of running mainloop
         """while self.running:
