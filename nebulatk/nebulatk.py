@@ -1827,6 +1827,10 @@ class _window_internal(threading.Thread, Component):
         self.root.mainloop()
         # once we exit mainloop, tear down:
 
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
         # print("exited")
         # NOTE: The following code is an alternative, but broken, method of running mainloop
         """while self.running:
