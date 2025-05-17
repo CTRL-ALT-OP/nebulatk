@@ -1,16 +1,39 @@
-from tkinter import font as tkfont
-from tkinter import Tk
 import math
+from tkinter import font as tkfont, Tk
 
+# Detect Windows
 ctypes_available = True
 try:
     from ctypes import windll, byref, create_unicode_buffer
-except Exception as e:
-    print(e)
+except ImportError:
     ctypes_available = False
+    from ctypes import cdll, c_char_p, c_void_p
+    from ctypes.util import find_library
 
 FR_PRIVATE = 0x10
 FR_NOT_ENUM = 0x20
+
+# ——— Prepare Fontconfig if on UNIX ———
+if not ctypes_available:
+    # Try to load the library once at import-time
+    libfc_path = find_library("fontconfig") or "libfontconfig.so.1"
+    try:
+        _libfc = cdll.LoadLibrary(libfc_path)
+    except OSError as e:
+        print(e)
+        _libfc = None
+    else:
+        # initialize Fontconfig
+        if not _libfc.FcInit():
+            raise RuntimeError("Fontconfig FcInit() failed")
+        # configure restypes
+        _libfc.FcConfigGetCurrent.restype = c_void_p  # opaque pointer
+        # FcConfigAppFontAddFile takes (FcConfig*, const char*)
+        _libfc.FcConfigAppFontAddFile.argtypes = (c_void_p, c_char_p)
+        # FcConfigBuildFonts takes (FcConfig*)
+        _libfc.FcConfigBuildFonts.argtypes = (c_void_p,)
+else:
+    _libfc = None
 
 
 class Font:
@@ -70,36 +93,49 @@ def get_font_metrics(root, font, metric="linespace"):
     return tkfont.Font(root, font=font).metrics(metric)
 
 
-def loadfont(fontpath, private=True, enumerable=False):
-    if not ctypes_available:
-        return
-    """Load a font into resources so that a process can use it
+def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> bool:
+    """
+    Load a font into the OS or process so that Tkinter (and other toolkits)
+    can see it by name.
 
-    Args:
-        fontpath (str): Path to the font
-        private (bool, optional): Whether this font should be private to this process. Defaults to True.
-        enumerable (bool, optional): Enumerable. Defaults to False.
+    On Windows: uses AddFontResourceExW.
+    On UNIX: uses Fontconfig’s FcConfigAppFontAddFile + FcConfigBuildFonts.
 
-    Raises:
-        TypeError: Fontpath must be of type str
-
-    Returns:
-        bool: Success of loading specified font
+    Returns True on success, False on failure.
     """
     if not isinstance(fontpath, str):
-        raise TypeError("Fontpath must be of type str")
+        raise TypeError("fontpath must be a str")
 
-    # Generate buffer and load the font resources
-    pathbuf = create_unicode_buffer(fontpath)
-    AddFontResourceEx = windll.gdi32.AddFontResourceExW
-    # Generate flags
-    flags = (FR_PRIVATE if private else 0) | (0 if enumerable else FR_NOT_ENUM)
+    if ctypes_available:
+        # — Windows branch —
+        buf = create_unicode_buffer(fontpath)
+        AddFont = windll.gdi32.AddFontResourceExW
+        flags = (FR_PRIVATE if private else 0) | (0 if enumerable else FR_NOT_ENUM)
+        added = AddFont(byref(buf), flags, 0)
+        return bool(added)
 
-    # Add fonts to resource, and return number of fonts added successfully
-    numFontsAdded = AddFontResourceEx(byref(pathbuf), flags, 0)
+    # — UNIX branch —
+    if _libfc is None:
+        # Fontconfig library didn’t load
+        print("Fontconfig library didn’t load")
+        return False
 
-    # Return success based on number of fonts added
-    return bool(numFontsAdded)
+    # get the current config pointer
+    cfg = _libfc.FcConfigGetCurrent()
+    if not cfg:
+        return False
+
+    # encode and add
+    encoded = fontpath.encode("utf-8")
+    ok = _libfc.FcConfigAppFontAddFile(cfg, encoded)
+    if ok == 0:
+        return False
+
+    # rebuild in-memory list
+    if not _libfc.FcConfigBuildFonts(cfg):
+        return False
+
+    return True
 
 
 def get_max_font_size(root, font, width, height, text):
