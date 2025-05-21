@@ -1429,7 +1429,7 @@ class Entry(_widget):
         if self._selection_start is not None and self._selection_end is not None:
             start = min(self._selection_start, self._selection_end)
             end = max(self._selection_start, self._selection_end)
-            return self.text[start:end]
+            return self.entire_text[start:end]
         return ""
 
 
