@@ -1,4 +1,4 @@
-import threading
+import tkinter as tk
 
 # Import from parent module
 try:
@@ -9,7 +9,6 @@ try:
         image_manager,
         standard_methods,
         defaults,
-        animation_controller,
     )
 except ImportError:
     import bounds_manager
@@ -18,7 +17,6 @@ except ImportError:
     import image_manager
     import standard_methods
     import defaults
-    import animation_controller
 
 
 # Base Component interface
