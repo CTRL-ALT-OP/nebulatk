@@ -1,0 +1,10 @@
+/*
+!/nebulatk
+/nebulatk/__pycache__/
+!/examples
+!/README.md
+!/tests
+/tests/__pycache__
+!requirements.txt
+*
+!.gitignore
