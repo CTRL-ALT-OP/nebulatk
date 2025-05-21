@@ -21,13 +21,13 @@ def canvas() -> ntk.Window:
 @pytest.fixture
 def basic_entry(canvas):
     """Fixture for a basic entry widget"""
-    return ntk.Entry(canvas, text="Default", width=200, height=40).place()
+    return ntk.Entry(canvas, text="Initial Text", width=200, height=40).place()
 
 
 @pytest.fixture
 def text_entry(canvas):
     """Fixture for an entry widget with pre-filled text"""
-    return ntk.Entry(canvas, text="Test Text", width=200, height=40).place()
+    return ntk.Entry(canvas, text="Initial Text", width=200, height=40).place()
 
 
 # Helper classes and functions
@@ -142,10 +142,10 @@ def test_entry_typing(text_entry) -> None:
     """Test typing text in the Entry widget."""
     entry = text_entry
 
-    set_cursor_position(entry, 9)
+    set_cursor_position(entry, 12)
     type_text(entry, "World")
-    assert entry.get() == "Test TextWorld"
-    assert entry.cursor_position == 14
+    assert entry.get() == "Initial TextWorld"
+    assert entry.cursor_position == 17
 
     entry.entire_text = "abcdef"
     set_cursor_position(entry, 3)
@@ -598,7 +598,6 @@ def test_entry_text_slicing(basic_entry) -> None:
 
     long_text = "This is a very long text that should exceed the width of the entry widget and require truncation"
     entry.entire_text = long_text
-
     set_cursor_position(entry, 0)
 
     for i in range(len(long_text)):
@@ -650,16 +649,13 @@ def test_entry_text_slicing(basic_entry) -> None:
         ("right", "e"),
     ],
 )
-def test_entry_text_justification(canvas, justify_value, expected_anchor) -> None:
+def test_entry_text_justification(
+    canvas, justify_value, expected_anchor, basic_entry
+) -> None:
     """Test text justification in the Entry widget."""
-    entry = ntk.Entry(
-        canvas,
-        text=f"{justify_value.capitalize()} justified",
-        justify=justify_value,
-        width=300,
-        height=50,
-    ).place()
+    entry = basic_entry
 
+    entry.configure(justify=justify_value)
     assert entry.justify == justify_value
 
     # Test visual text justification
