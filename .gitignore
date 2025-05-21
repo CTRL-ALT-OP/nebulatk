@@ -1,6 +1,5 @@
 /*
 !/nebulatk
-!/nebulatk/widgets
 !/nebulatk/widgets/
 /nebulatk/widgets/__pycache__/
 /nebulatk/__pycache__/
@@ -9,5 +8,4 @@
 !/tests
 /tests/__pycache__
 !requirements.txt
-*
 !.gitignore
