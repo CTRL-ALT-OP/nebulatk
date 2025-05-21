@@ -1,5 +1,8 @@
 /*
 !/nebulatk
+!/nebulatk/widgets
+!/nebulatk/widgets/
+/nebulatk/widgets/__pycache__/
 /nebulatk/__pycache__/
 !/examples
 !/README.md
