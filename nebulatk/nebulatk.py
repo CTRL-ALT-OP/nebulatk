@@ -24,7 +24,7 @@ try:
     from .widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from .widgets import Button, Label, Entry, Frame, Slider, Container
+    from .widgets import Button, Label, Entry, Frame, Slider
 
 except ImportError:
     import bounds_manager
@@ -39,7 +39,7 @@ except ImportError:
     from widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from widgets import Button, Label, Entry, Frame, Slider, Container
+    from widgets import Button, Label, Entry, Frame, Slider
 
 
 # Our implementation of tkinter's file_dialog.
@@ -135,68 +135,6 @@ class _window_internal(threading.Thread, Component):
         self.closing_command = closing_command
 
         self.defaults = defaults.new()
-
-    # NOTE: CONTAINER WIDGET NOTIFICATION METHODS
-    # These methods notify Container widgets when widgets are added, moved, or removed
-    # so they can update their cloned widgets accordingly
-
-    def _get_container_widgets(self):
-        """Get all Container widgets in this window."""
-        # Import here to avoid circular imports
-        try:
-            from .widgets.container import Container
-        except ImportError:
-            # Fallback for when running as a script
-            import sys
-            import os
-
-            sys.path.insert(0, os.path.dirname(__file__))
-            from widgets.container import Container
-        return [child for child in self.children if isinstance(child, Container)]
-
-    def _notify_containers_widget_added(self, widget):
-        """Notify all Container widgets that a new widget has been added."""
-        if hasattr(widget, "__class__") and widget.__class__.__name__ != "Container":
-            for container in self._get_container_widgets():
-                try:
-                    container.on_widget_added(widget)
-                except Exception as e:
-                    # Don't let container errors crash the window
-                    print(f"Warning: Container notification error (widget_added): {e}")
-
-    def _notify_containers_widget_moved(self, widget):
-        """Notify all Container widgets that a widget has been moved."""
-        if hasattr(widget, "__class__") and widget.__class__.__name__ != "Container":
-            for container in self._get_container_widgets():
-                try:
-                    container.on_widget_moved(widget)
-                except Exception as e:
-                    # Don't let container errors crash the window
-                    print(f"Warning: Container notification error (widget_moved): {e}")
-
-    def _notify_containers_widget_removed(self, widget):
-        """Notify all Container widgets that a widget has been removed."""
-        if hasattr(widget, "__class__") and widget.__class__.__name__ != "Container":
-            for container in self._get_container_widgets():
-                try:
-                    container.on_widget_removed(widget)
-                except Exception as e:
-                    # Don't let container errors crash the window
-                    print(
-                        f"Warning: Container notification error (widget_removed): {e}"
-                    )
-
-    def _notify_containers_widget_configured(self, widget):
-        """Notify all Container widgets that a widget has been configured/changed."""
-        if hasattr(widget, "__class__") and widget.__class__.__name__ != "Container":
-            for container in self._get_container_widgets():
-                try:
-                    container.on_widget_configured(widget)
-                except Exception as e:
-                    # Don't let container errors crash the window
-                    print(
-                        f"Warning: Container notification error (widget_configured): {e}"
-                    )
 
     # NOTE: EVENT HANDLERS
 

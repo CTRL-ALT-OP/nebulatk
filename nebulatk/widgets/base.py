@@ -66,25 +66,15 @@ class Component:
 
         self.show() if visible else self.hide()
 
-        # Notify containers when visibility changes
-        if hasattr(self, "initialized") and self.initialized:
-            self._notify_containers_configured()
-
     @property
     def x(self):
         return self._position[0]
 
     @x.setter
     def x(self, x):
-        old_x = self._position[0]
         self._position[0] = x
 
-        if self.initialized and self.master.updates_all:
-            self._configure_position(self._position)
-
-        # Notify containers that a widget has been moved (if position actually changed)
-        if old_x != x and hasattr(self.root.master, "_notify_containers_widget_moved"):
-            self.root.master._notify_containers_widget_moved(self)
+        self.place(x, self.y)
 
     @property
     def y(self):
@@ -92,15 +82,9 @@ class Component:
 
     @y.setter
     def y(self, y):
-        old_y = self._position[1]
         self._position[1] = y
 
-        if self.initialized and self.master.updates_all:
-            self._configure_position(self._position)
-
-        # Notify containers that a widget has been moved (if position actually changed)
-        if old_y != y and hasattr(self.root.master, "_notify_containers_widget_moved"):
-            self.root.master._notify_containers_widget_moved(self)
+        self.place(self.x, y)
 
     @property
     def width(self):
@@ -110,11 +94,7 @@ class Component:
     def width(self, width):
         self._size[0] = width
 
-        if self.initialized and self.master.updates_all:
-            self._configure_size(self._size)
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
+        self.resize(width, self.height)
 
     @property
     def height(self):
@@ -124,11 +104,7 @@ class Component:
     def height(self, height):
         self._size[1] = height
 
-        if self.initialized and self.master.updates_all:
-            self._configure_size(self._size)
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
+        self.resize(self.width, height)
 
 
 # Initialize base methods for all widgets.
@@ -186,9 +162,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self._configure_size(self._size)
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def height(self):
         return self._size[1]
@@ -200,24 +173,16 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self._configure_size(self._size)
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def x(self):
         return self._position[0]
 
     @x.setter
     def x(self, x):
-        old_x = self._position[0]
         self._position[0] = x
 
         if self.initialized and self.master.updates_all:
             self._configure_position(self._position)
-
-        # Notify containers that a widget has been moved (if position actually changed)
-        if old_x != x and hasattr(self.root.master, "_notify_containers_widget_moved"):
-            self.root.master._notify_containers_widget_moved(self)
 
     @property
     def y(self):
@@ -225,15 +190,10 @@ class _widget_properties:
 
     @y.setter
     def y(self, y):
-        old_y = self._position[1]
         self._position[1] = y
 
         if self.initialized and self.master.updates_all:
             self._configure_position(self._position)
-
-        # Notify containers that a widget has been moved (if position actually changed)
-        if old_y != y and hasattr(self.root.master, "_notify_containers_widget_moved"):
-            self.root.master._notify_containers_widget_moved(self)
 
     @property
     def orientation(self):
@@ -246,9 +206,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def text(self):
         return self._text
@@ -259,9 +216,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self._configure_text(self._text)
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def font(self):
@@ -299,9 +253,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def justify(self):
         return self._justify
@@ -312,9 +263,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def text_color(self):
@@ -328,9 +276,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def active_text_color(self):
         return self._colors["active_text_color"].trunc_hex
@@ -342,9 +287,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def fill(self):
@@ -358,9 +300,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def active_fill(self):
         return self._colors["active_fill"].color
@@ -373,9 +312,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def hover_fill(self):
         return self._colors["hover_fill"].color
@@ -387,9 +323,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def active_hover_fill(self):
@@ -405,9 +338,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def border(self):
         return self._colors["border"].color
@@ -419,9 +349,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def border_width(self):
@@ -436,9 +363,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def image(self):
         return self._images["image"]
@@ -451,9 +375,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def active_image(self):
@@ -468,9 +389,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def hover_image(self):
         return self._images["hover_image"]
@@ -484,9 +402,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def active_hover_image(self):
         return self._images["active_hover_image"]
@@ -499,9 +414,6 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
     @property
     def bounds_type(self):
@@ -532,9 +444,6 @@ class _widget_properties:
         if self.initialized and self.master.updates_all:
             self.update()
 
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
-
     @property
     def bounds(self):
         return self._bounds
@@ -543,12 +452,6 @@ class _widget_properties:
     def bounds(self, value):
         self._bounds = value
         self._bounds_type = "non-standard"
-
-        if self.initialized and self.master.updates_all:
-            self.update()
-
-        # Always notify containers about configuration changes
-        self._notify_containers_configured()
 
 
 class _widget(_widget_properties, Component):
@@ -640,10 +543,6 @@ class _widget(_widget_properties, Component):
 
         self.root.master.children.insert(0, self)
 
-        # Notify containers that a new widget has been added
-        if hasattr(self.root.master, "_notify_containers_widget_added"):
-            self.root.master._notify_containers_widget_added(self)
-
         self._size = [width, height]
 
         self._position = [0, 0]
@@ -718,13 +617,11 @@ class _widget(_widget_properties, Component):
             elif self.mode == "standard":
                 standard_methods.hovered_standard(self)
             self.hovering = True
-            self._notify_containers_configured()
 
     def hover_end(self):
         if self.can_hover:
             standard_methods.hover_end(self)
             self.hovering = False
-            self._notify_containers_configured()
 
     # Utilize our standard methods to manage clicking
     def clicked(self, x=None, y=None):
@@ -734,8 +631,6 @@ class _widget(_widget_properties, Component):
 
             elif self.mode == "standard":
                 standard_methods.clicked_standard(self)
-
-            self._notify_containers_configured()
 
     # No standard method for releasing, most other widgets don't use this method
     def release(self):
@@ -752,8 +647,6 @@ class _widget(_widget_properties, Component):
                 if self.command_off is not None:
                     self.command_off()
 
-            self._notify_containers_configured()
-
     # Utilize our standard methods to manage toggling
     def toggle(self):
         """Toggle appearance of button"""
@@ -763,32 +656,14 @@ class _widget(_widget_properties, Component):
         elif self.mode == "standard":
             standard_methods.toggle_object_standard(self)
 
-        self._notify_containers_configured()
-
     def dragging(self, x, y):
         if self.dragging_command:
             x, y = standard_methods.abs_position_to_rel(self, x, y)
             self.dragging_command(x, y)
 
     def destroy(self):
-        # Notify containers that a widget is being removed
-        if hasattr(self.root.master, "_notify_containers_widget_removed"):
-            self.root.master._notify_containers_widget_removed(self)
-
         standard_methods.delete(self)
         self.root.master.children.remove(self)
-
-        self._notify_containers_configured()
-
-    def _notify_containers_configured(self):
-        """Helper method to notify containers that this widget has been configured."""
-        if (
-            hasattr(self, "root")
-            and self.root is not None
-            and hasattr(self.root, "master")
-            and hasattr(self.root.master, "_notify_containers_widget_configured")
-        ):
-            self.root.master._notify_containers_widget_configured(self)
 
     def typed(self, char):
         if not self.can_type:
@@ -932,9 +807,6 @@ class _widget(_widget_properties, Component):
 
         update_display()
 
-        # Notify containers when text input changes the widget
-        self._notify_containers_configured()
-
     def change_active(self):
         pass
 
@@ -948,9 +820,6 @@ class _widget(_widget_properties, Component):
         if root:
             self._update_children(command="_hide")
 
-        # Notify containers when visibility changes
-        self._notify_containers_configured()
-
         # Always return self on methods the user might call. this allows for chaining like button = Button().place().hide()
         return self
 
@@ -962,10 +831,6 @@ class _widget(_widget_properties, Component):
         # If this widget is the root widget, hide all its children
         if root:
             self._update_children(command="_show")
-
-        # Notify containers when visibility changes
-        self._notify_containers_configured()
-
         return self
 
     # Default place behavior
@@ -995,10 +860,6 @@ class _widget(_widget_properties, Component):
 
         self._update_children()
 
-        # Notify containers that a widget has been moved
-        if hasattr(self.root.master, "_notify_containers_widget_moved"):
-            self.root.master._notify_containers_widget_moved(self)
-
         if hasattr(self, "original_x"):
             self.original_x = x
             self.original_y = y
@@ -1009,9 +870,6 @@ class _widget(_widget_properties, Component):
         standard_methods.schedule_delete(self)
         self.place(self.x, self.y)
         standard_methods.delete_scheduled(self)
-
-        # Notify containers when widget is updated
-        self._notify_containers_configured()
 
     def _configure_size(self, size):
         self.update()
@@ -1034,8 +892,4 @@ class _widget(_widget_properties, Component):
             setattr(self, k, v)
         if not self.master.updates_all:
             self.update()
-
-        # Notify containers when widget is configured
-        self._notify_containers_configured()
-
         return self
