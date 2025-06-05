@@ -24,7 +24,7 @@ try:
     from .widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from .widgets import Button, Label, Entry, Frame, Slider
+    from .widgets import Button, Label, Entry, Frame, Slider, Container
 
 except ImportError:
     import bounds_manager
@@ -39,7 +39,7 @@ except ImportError:
     from widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from widgets import Button, Label, Entry, Frame, Slider
+    from widgets import Button, Label, Entry, Frame, Slider, Container
 
 
 # Our implementation of tkinter's file_dialog.
@@ -263,8 +263,19 @@ class _window_internal(threading.Thread, Component):
     # Wrapper for canvas.create_image method
     def create_image(self, x, y, image, state="normal"):
         img = self.canvas.create_image(
-            x, y, image=image.tk_image(self), anchor="nw", state=state
+            x,
+            y,
+            image=image.tk_image(self),
+            anchor="nw",
+            state=state,
         )
+        for child_canvas in self.children:
+            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
+                child_canvas.replicate_object(img)
+                # Ensure background items stay behind container widgets
+                child_canvas.canvas.tag_lower("background_item")
+                if child_canvas.canvas.find_withtag("fg_item"):
+                    child_canvas.canvas.tag_raise("fg_item")
         return img, image
 
     # Wrapper for canvas.create_rectangle method
@@ -281,43 +292,77 @@ class _window_internal(threading.Thread, Component):
             id, image = self.create_image(x, y, bg_image, state=state)
             return id, image
 
-        # Otherwise we can continue with creating the rectangle
-        return (
-            self.canvas.create_rectangle(
-                x + border_width / 2,
-                y + border_width / 2,
-                widt - border_width / 2,
-                height - border_width / 2,
-                fill=fill[:7],
-                width=border_width,
-                outline=outline[:7],
-                state=state,
-            ),
-            None,
+            # Otherwise we can continue with creating the rectangle
+
+        rect = self.canvas.create_rectangle(
+            x + border_width / 2,
+            y + border_width / 2,
+            widt - border_width / 2,
+            height - border_width / 2,
+            fill=fill[:7],
+            width=border_width,
+            outline=outline[:7],
+            state=state,
         )
+
+        for child_canvas in self.children:
+            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
+                child_canvas.replicate_object(rect)
+                # Ensure background items stay behind container widgets
+                child_canvas.canvas.tag_lower("background_item")
+                if child_canvas.canvas.find_withtag("fg_item"):
+                    child_canvas.canvas.tag_raise("fg_item")
+        return (rect, None)
 
     # Wrapper for canvas.create_text method
     def create_text(
         self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
-        return (
-            self.canvas.create_text(
-                x,
-                y,
-                text=text,
-                font=font,
-                fill=fill,
-                anchor=anchor,
-                state=state,
-                angle=angle,
-            ),
-            None,
+
+        text_id = self.canvas.create_text(
+            x,
+            y,
+            text=text,
+            font=font,
+            fill=fill,
+            anchor=anchor,
+            state=state,
+            angle=angle,
         )
+
+        for child_canvas in self.children:
+            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
+                child_canvas.replicate_object(text_id)
+                # Ensure background items stay behind container widgets
+                child_canvas.canvas.tag_lower("background_item")
+                if child_canvas.canvas.find_withtag("fg_item"):
+                    child_canvas.canvas.tag_raise("fg_item")
+        return (text_id, None)
 
     # Wrapper for canvas.move method
     def move(self, _object, x, y):
         if _object is not None:
             self.canvas.move(_object, x, y)
+            for child_canvas in self.children:
+                if (
+                    type(child_canvas).__name__ == "Container"
+                    and child_canvas.initialized
+                ):
+                    if _object in child_canvas.maps:
+                        child_id = child_canvas.maps[_object]
+                        child_canvas.canvas.move(child_id, x, y)
+                    else:
+                        # Only try to replicate if the object exists and is valid
+                        try:
+                            if _object in self.canvas.find_all():
+                                child_canvas.replicate_object(_object)
+                        except (tk.TclError, AttributeError):
+                            # Object is invalid or doesn't exist, skip replication
+                            pass
+
+                        child_canvas.canvas.tag_lower("background_item")
+                        if child_canvas.canvas.find_withtag("fg_item"):
+                            child_canvas.canvas.tag_raise("fg_item")
 
     def object_place(self, _object, x, y):
         if _object is not None:
@@ -327,10 +372,31 @@ class _window_internal(threading.Thread, Component):
     # Wrapper for canvas.delete method
     def delete(self, _object):
         self.canvas.delete(_object)
+        for child_canvas in self.children:
+            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
+                if _object in child_canvas.maps:
+                    child_id = child_canvas.maps[_object]
+                    child_canvas.canvas.delete(child_id)
 
     # Wrapper for canvas.change_state method
     def change_state(self, _object, state):
         self.canvas.itemconfigure(_object, state=state)
+        for child_canvas in self.children:
+            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
+                if _object in child_canvas.maps:
+                    child_id = child_canvas.maps[_object]
+                    child_canvas.canvas.itemconfigure(child_id, state=state)
+                else:
+                    # Only try to replicate if the object exists and is valid
+                    try:
+                        if _object in self.canvas.find_all():
+                            child_canvas.replicate_object(_object)
+                    except (tk.TclError, AttributeError):
+                        # Object is invalid or doesn't exist, skip replication
+                        pass
+                child_canvas.canvas.tag_lower("background_item")
+                if child_canvas.canvas.find_withtag("fg_item"):
+                    child_canvas.canvas.tag_raise("fg_item")
 
     # NOTE: Other methods
 
@@ -405,13 +471,13 @@ class _window_internal(threading.Thread, Component):
                 self.closing_command()
 
         # Bind events to our new event handlers
-        self.canvas.bind("<Button-1>", self.click)
-        self.canvas.bind("<ButtonRelease-1>", self.click_up)
-        self.canvas.bind_all("<Key>", self.typing)
-        self.canvas.bind_all("<KeyRelease>", self.typing_up)
+        self.bind("<Button-1>", self.click)
+        self.bind("<ButtonRelease-1>", self.click_up)
+        self.bind("<Key>", self.typing)
+        self.bind("<KeyRelease>", self.typing_up)
         self.root.protocol("WM_DELETE_WINDOW", close)
-        self.canvas.bind("<Motion>", self.hover)
-        self.canvas.bind("<Leave>", self.leave_window)
+        self.bind("<Motion>", self.hover)
+        self.bind("<Leave>", self.leave_window)
 
         self.root.mainloop()
 
@@ -767,6 +833,13 @@ def __main__():
         widget, {"fill": "#00FF0000"}, duration=1.0, looping=True
     )  # Animate to green
     anim.start()
+
+    container = Container(window, width=200, height=50, fill="#FF0000")
+    container.place(20, 10)
+    print(container.maps)
+
+    button5 = Button(container, text="hello", width=100, height=100, fill="#FF0000")
+    button5.place(0, 0)
 
 
 if __name__ == "__main__":

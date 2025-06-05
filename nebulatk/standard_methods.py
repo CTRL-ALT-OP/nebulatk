@@ -58,9 +58,11 @@ def sign(x):
 def rel_position_to_abs(_object, x, y):
     # Add up positions for relative offsets in parent tree
     obj = _object
-    while obj.root != obj.master:
-        x += obj.root.x
-        y += obj.root.y
+    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
+        # Safety check: only add position if root has x and y attributes
+        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
+            x += obj.root.x
+            y += obj.root.y
         obj = obj.root
     return x, y
 
@@ -68,9 +70,11 @@ def rel_position_to_abs(_object, x, y):
 def abs_position_to_rel(_object, x, y):
     # Add up positions for relative offsets in parent tree
     obj = _object
-    while obj.root != obj.master:
-        x -= obj.root.x
-        y -= obj.root.y
+    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
+        # Safety check: only subtract position if root has x and y attributes
+        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
+            x -= obj.root.x
+            y -= obj.root.y
         obj = obj.root
     return x, y
 
@@ -98,9 +102,11 @@ def get_rect_points(_object):
     x = _object.x
     y = _object.y
     obj = _object
-    while obj.root != obj.master:
-        x += obj.root.x
-        y += obj.root.y
+    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
+        # Safety check: only add position if root has x and y attributes
+        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
+            x += obj.root.x
+            y += obj.root.y
         obj = obj.root
 
     a = (x, y)

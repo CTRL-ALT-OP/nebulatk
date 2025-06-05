@@ -164,7 +164,18 @@ class Image:
 
 
 def convert_image(_object, image):
-    return piltk.PhotoImage(image, master=_object.master.root)
+    # Handle Container objects
+    if hasattr(_object, "_window"):
+        # _object is a Container itself (when passed as master to create_image)
+        tkinter_root = _object._window.root
+    elif hasattr(_object.master, "_window"):
+        # _object.master is a Container (when a widget is parented to a container)
+        tkinter_root = _object.master._window.root
+    else:
+        # This is a regular window_internal object
+        tkinter_root = _object.master.root
+
+    return piltk.PhotoImage(image, master=tkinter_root)
 
 
 def load_image(_object, image, return_both=False):

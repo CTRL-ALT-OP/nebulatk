@@ -67,30 +67,46 @@ def measure_text(root, font, text):
         font = (font[0], font[1], tkfont.NORMAL)
 
     if not isinstance(root, Tk):
-        root = root.root
+        # Handle Container objects - access the window's root
+        if hasattr(root, "_window"):
+            # For nested containers, traverse to the top-level window
+            current = root._window
+            while hasattr(current, "_window") and current._window != current:
+                current = current._window
+            root = current.root
+        else:
+            root = root.root
 
     return tkfont.Font(root, font=font).measure(text)
 
 
-def get_font_metrics(root, font, metric="linespace"):
-    """Get font metrics such as linespace.
+def get_font_metrics(root, font, attr):
+    """Get font metrics for the given font.
 
     Args:
         root: The root tk window or nebulatk window (.root attribute)
         font: A tuple containing the font name, size, and optionally a style
-        metric (str): The metric to retrieve. Defaults to "linespace"
+        attr (str): The attribute to get (e.g., 'linespace')
 
     Returns:
-        int: The requested metric value
+        int: The value of the requested font metric
     """
     # Generate full length font tuple
     if len(font) < 3:
         font = (font[0], font[1], tkfont.NORMAL)
 
     if not isinstance(root, Tk):
-        root = root.root
+        # Handle Container objects - access the window's root
+        if hasattr(root, "_window"):
+            # For nested containers, traverse to the top-level window
+            current = root._window
+            while hasattr(current, "_window") and current._window != current:
+                current = current._window
+            root = current.root
+        else:
+            root = root.root
 
-    return tkfont.Font(root, font=font).metrics(metric)
+    return tkfont.Font(root, font=font).metrics(attr)
 
 
 def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> bool:
@@ -99,7 +115,7 @@ def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> b
     can see it by name.
 
     On Windows: uses AddFontResourceExW.
-    On UNIX: uses Fontconfig’s FcConfigAppFontAddFile + FcConfigBuildFonts.
+    On UNIX: uses Fontconfig's FcConfigAppFontAddFile + FcConfigBuildFonts.
 
     Returns True on success, False on failure.
     """
@@ -116,8 +132,8 @@ def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> b
 
     # — UNIX branch —
     if _libfc is None:
-        # Fontconfig library didn’t load
-        print("Fontconfig library didn’t load")
+        # Fontconfig library didn't load
+        print("Fontconfig library didn't load")
         return False
 
     # get the current config pointer
