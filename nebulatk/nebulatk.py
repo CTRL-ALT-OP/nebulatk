@@ -834,13 +834,6 @@ def __main__():
     )  # Animate to green
     anim.start()
 
-    container = Container(window, width=200, height=50, fill="#FF0000")
-    container.place(20, 10)
-    print(container.maps)
-
-    button5 = Button(container, text="hello", width=100, height=100, fill="#FF0000")
-    button5.place(0, 0)
-
 
 if __name__ == "__main__":
     __main__()
