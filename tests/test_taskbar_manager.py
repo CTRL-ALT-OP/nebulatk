@@ -337,9 +337,10 @@ class TestTaskbarManagerFeatures:
         manager.taskbar_button_created = True
         manager.hwnd = 12345
 
-        # Mock dwmapi
+        # Mock dwmapi and DwmSetWindowAttribute for initialization
         with patch("ctypes.windll.dwmapi") as mock_dwmapi:
             mock_dwmapi.DwmInvalidateIconicBitmaps.return_value = 0
+            mock_dwmapi.DwmSetWindowAttribute.return_value = 0
 
             # Test setting clip rectangle with specific values
             manager.SetThumbnailClip(10, 20, 300, 400)
@@ -351,8 +352,12 @@ class TestTaskbarManagerFeatures:
             assert manager.clip_rect.right == 310  # left + width
             assert manager.clip_rect.bottom == 420  # top + height
 
-            # Verify DwmInvalidateIconicBitmaps was called with correct hwnd
-            mock_dwmapi.DwmInvalidateIconicBitmaps.assert_called_once_with(12345)
+            # Verify custom thumbnails were initialized
+            assert manager.custom_thumbnails_initialized is True
+
+            # Verify DwmInvalidateIconicBitmaps was called twice (once during initialization, once after setting clip)
+            assert mock_dwmapi.DwmInvalidateIconicBitmaps.call_count == 2
+            mock_dwmapi.DwmInvalidateIconicBitmaps.assert_called_with(12345)
 
     def test_set_thumbnail_clip_validation(self, mock_modules, mock_window):
         """Test thumbnail clipping with dimension validation."""
@@ -399,9 +404,10 @@ class TestTaskbarManagerFeatures:
 
         manager.clip_rect = wintypes.RECT(10, 20, 310, 420)
 
-        # Mock dwmapi
+        # Mock dwmapi and DwmSetWindowAttribute
         with patch("ctypes.windll.dwmapi") as mock_dwmapi:
             mock_dwmapi.DwmInvalidateIconicBitmaps.return_value = 0
+            mock_dwmapi.DwmSetWindowAttribute.return_value = 0
 
             # Test clearing clip rectangle
             manager.ClearThumbnailClip()
@@ -409,8 +415,12 @@ class TestTaskbarManagerFeatures:
             # Verify clip_rect is None
             assert manager.clip_rect is None
 
-            # Verify DwmInvalidateIconicBitmaps was called with correct hwnd
-            mock_dwmapi.DwmInvalidateIconicBitmaps.assert_called_once_with(54321)
+            # Verify custom thumbnails were initialized
+            assert manager.custom_thumbnails_initialized is True
+
+            # Verify DwmInvalidateIconicBitmaps was called twice (once during initialization, once after clearing)
+            assert mock_dwmapi.DwmInvalidateIconicBitmaps.call_count == 2
+            mock_dwmapi.DwmInvalidateIconicBitmaps.assert_called_with(54321)
 
     def test_auto_invalidation_control(self, mock_modules, mock_window):
         """Test auto-invalidation enable/disable."""
@@ -443,6 +453,118 @@ class TestTaskbarManagerFeatures:
         # Test chaining
         result = manager.SetDebounceDelay(200)
         assert result is manager  # Should return self for chaining
+
+    def test_custom_thumbnails_not_initialized_by_default(
+        self, mock_modules, mock_window
+    ):
+        """Test that custom thumbnails are not initialized by default."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+
+        # Verify custom thumbnails are not initialized
+        assert manager.custom_thumbnails_initialized is False
+
+        # Test that using only notifications/progress doesn't initialize custom thumbnails
+        manager.SetProgress(50)
+        assert manager.custom_thumbnails_initialized is False
+
+        manager.SetThumbnailNotification("warning")
+        assert manager.custom_thumbnails_initialized is False
+
+    def test_custom_thumbnails_initialized_on_first_clip_call(
+        self, mock_modules, mock_window
+    ):
+        """Test that custom thumbnails are initialized when SetThumbnailClip is called."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        # Verify custom thumbnails are not initialized initially
+        assert manager.custom_thumbnails_initialized is False
+
+        # Mock dwmapi for initialization
+        with patch("ctypes.windll.dwmapi") as mock_dwmapi:
+            mock_dwmapi.DwmInvalidateIconicBitmaps.return_value = 0
+            mock_dwmapi.DwmSetWindowAttribute.return_value = 0
+
+            # Call SetThumbnailClip
+            manager.SetThumbnailClip(0, 0, 100, 100)
+
+            # Verify custom thumbnails are now initialized
+            assert manager.custom_thumbnails_initialized is True
+
+            # Verify DwmSetWindowAttribute was called for custom thumbnail setup
+            assert (
+                mock_dwmapi.DwmSetWindowAttribute.call_count == 3
+            )  # Three attributes set
+
+    def test_clear_thumbnail_clip_keeps_custom_thumbnails_initialized(
+        self, mock_modules, mock_window
+    ):
+        """Test that ClearThumbnailClip doesn't turn off custom thumbnails."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        # Mock dwmapi for initialization
+        with patch("ctypes.windll.dwmapi") as mock_dwmapi:
+            mock_dwmapi.DwmInvalidateIconicBitmaps.return_value = 0
+            mock_dwmapi.DwmSetWindowAttribute.return_value = 0
+
+            # First call to SetThumbnailClip initializes custom thumbnails
+            manager.SetThumbnailClip(0, 0, 100, 100)
+            assert manager.custom_thumbnails_initialized is True
+
+            # Clear the clip
+            manager.ClearThumbnailClip()
+
+            # Verify custom thumbnails remain initialized
+            assert manager.custom_thumbnails_initialized is True
+            assert manager.clip_rect is None
+
+    def test_custom_thumbnails_initialized_only_once(self, mock_modules, mock_window):
+        """Test that custom thumbnails are only initialized once, even with multiple SetThumbnailClip calls."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        # Mock dwmapi for initialization
+        with patch("ctypes.windll.dwmapi") as mock_dwmapi:
+            mock_dwmapi.DwmInvalidateIconicBitmaps.return_value = 0
+            mock_dwmapi.DwmSetWindowAttribute.return_value = 0
+
+            # First call to SetThumbnailClip initializes custom thumbnails
+            manager.SetThumbnailClip(0, 0, 100, 100)
+            assert manager.custom_thumbnails_initialized is True
+
+            # Check initialization call count
+            initial_setup_calls = mock_dwmapi.DwmSetWindowAttribute.call_count
+            initial_invalidate_calls = mock_dwmapi.DwmInvalidateIconicBitmaps.call_count
+
+            # Second call to SetThumbnailClip should not reinitialize
+            manager.SetThumbnailClip(10, 10, 200, 200)
+            assert manager.custom_thumbnails_initialized is True
+
+            # Setup calls should not have increased (no re-initialization)
+            assert mock_dwmapi.DwmSetWindowAttribute.call_count == initial_setup_calls
+            # Invalidate calls should have increased by 1 (for the new clip)
+            assert (
+                mock_dwmapi.DwmInvalidateIconicBitmaps.call_count
+                == initial_invalidate_calls + 1
+            )
+
+            # Verify new clip rectangle is set
+            assert manager.clip_rect.left == 10
+            assert manager.clip_rect.top == 10
+            assert manager.clip_rect.right == 210  # 10 + 200
+            assert manager.clip_rect.bottom == 210  # 10 + 200
 
 
 class TestTaskbarManagerValidation:
@@ -515,6 +637,100 @@ class TestTaskbarManagerThumbnails:
 
         # Verify flag is set
         assert manager.live_preview_request_flag is True
+
+    def test_thumbnail_requests_ignored_when_not_initialized(
+        self, mock_modules, mock_window
+    ):
+        """Test that thumbnail requests are ignored when custom thumbnails aren't initialized."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+        manager.custom_thumbnails_initialized = False  # Not initialized
+
+        # Mock the window message handler and DWM constants
+        LRESULT, LONG_PTR, WNDPROCTYPE = 0, MagicMock(), MagicMock()
+
+        with patch("ctypes.windll.user32.CallWindowProcW") as mock_call_proc:
+            mock_call_proc.return_value = 0
+
+            # Test thumbnail request message when not initialized
+            result = manager._handle_window_message(
+                12345,
+                0x0323,
+                0,
+                (150 << 16) | 200,
+                999,
+                LONG_PTR,  # WM_DWMSENDICONICTHUMBNAIL
+            )
+
+            # Should fall through to default handler, not return 0
+            assert result == 0  # CallWindowProcW return value
+            mock_call_proc.assert_called_once()
+
+            # Reset mock
+            mock_call_proc.reset_mock()
+
+            # Test live preview request message when not initialized
+            result = manager._handle_window_message(
+                12345, 0x0326, 0, 0, 999, LONG_PTR  # WM_DWMSENDICONICLIVEPREVIEWBITMAP
+            )
+
+            # Should fall through to default handler, not return 0
+            assert result == 0  # CallWindowProcW return value
+            mock_call_proc.assert_called_once()
+
+    def test_thumbnail_requests_handled_when_initialized(
+        self, mock_modules, mock_window
+    ):
+        """Test that thumbnail requests are handled when custom thumbnails are initialized."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+        manager.custom_thumbnails_initialized = True  # Initialized
+
+        # Mock the window message handler and DWM constants
+        LRESULT, LONG_PTR, WNDPROCTYPE = 0, MagicMock(), MagicMock()
+
+        with patch("ctypes.windll.user32.CallWindowProcW") as mock_call_proc:
+            mock_call_proc.return_value = 0
+
+            # Test thumbnail request message when initialized
+            result = manager._handle_window_message(
+                12345,
+                0x0323,
+                0,
+                (150 << 16) | 200,
+                999,
+                LONG_PTR,  # WM_DWMSENDICONICTHUMBNAIL
+            )
+
+            # Should handle the message and return 0 immediately
+            assert result == 0
+            mock_call_proc.assert_not_called()  # Should not call default handler
+
+            # Verify the request was delegated
+            assert manager.thumbnail_request_flag is True
+            assert manager.thumbnail_width == 150
+            assert manager.thumbnail_height == 200
+
+            # Reset flags
+            manager.thumbnail_request_flag = False
+
+            # Test live preview request message when initialized
+            result = manager._handle_window_message(
+                12345, 0x0326, 0, 0, 999, LONG_PTR  # WM_DWMSENDICONICLIVEPREVIEWBITMAP
+            )
+
+            # Should handle the message and return 0 immediately
+            assert result == 0
+            mock_call_proc.assert_not_called()  # Should not call default handler
+
+            # Verify the request was delegated
+            assert manager.live_preview_request_flag is True
 
     def test_create_full_thumbnail(self, mock_modules, mock_window):
         """Test full thumbnail creation."""
@@ -767,13 +983,13 @@ class TestTaskbarManagerWindowMessages:
             mock_apply.assert_called_once()
 
     def test_apply_taskbar_features_sequence(self, mock_modules, mock_window):
-        """Test the sequence of taskbar feature application."""
+        """Test the sequence of basic taskbar feature application (no custom thumbnails)."""
         from taskbar_manager import TaskbarManager
 
         manager = TaskbarManager(mock_window)
         manager.hwnd = 12345
 
-        # Mock the individual setup methods
+        # Mock the individual setup methods (should not be called in basic apply)
         with patch.object(manager, "_setup_custom_thumbnails") as mock_setup:
             with patch.object(manager, "_set_thumbnail_tooltip") as mock_tooltip:
                 with patch(
@@ -786,13 +1002,15 @@ class TestTaskbarManagerWindowMessages:
                     # Test applying taskbar features
                     manager._apply_taskbar_features()
 
-                    # Verify setup sequence
-                    mock_setup.assert_called_once()
-                    mock_tooltip.assert_called_once_with("TaskbarManager Demo")
-                    mock_invalidate.assert_called_once_with(12345)
+                    # Verify setup sequence does NOT include custom thumbnails
+                    mock_setup.assert_not_called()
+                    mock_tooltip.assert_not_called()
+                    mock_invalidate.assert_not_called()
 
                     # Verify taskbar button is marked as created
                     assert manager.taskbar_button_created is True
+                    # Verify custom thumbnails are NOT initialized
+                    assert manager.custom_thumbnails_initialized is False
 
     def test_setup_custom_thumbnails_parameters(self, mock_modules, mock_window):
         """Test custom thumbnail setup with parameter verification."""
@@ -857,6 +1075,52 @@ class TestTaskbarManagerWindowMessages:
             # Verify features were NOT applied again
             mock_apply.assert_not_called()
 
+    def test_initialize_custom_thumbnails_functionality(
+        self, mock_modules, mock_window
+    ):
+        """Test the _initialize_custom_thumbnails method directly."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        # Mock the individual setup methods
+        with patch.object(manager, "_setup_custom_thumbnails") as mock_setup:
+            with patch.object(manager, "_set_thumbnail_tooltip") as mock_tooltip:
+                with patch(
+                    "ctypes.windll.dwmapi.DwmInvalidateIconicBitmaps"
+                ) as mock_invalidate:
+                    mock_setup.return_value = True
+                    mock_tooltip.return_value = True
+                    mock_invalidate.return_value = 0
+
+                    # Test initializing custom thumbnails
+                    manager._initialize_custom_thumbnails()
+
+                    # Verify setup sequence
+                    mock_setup.assert_called_once()
+                    mock_tooltip.assert_called_once_with("TaskbarManager Demo")
+                    mock_invalidate.assert_called_once_with(12345)
+
+                    # Verify custom thumbnails are marked as initialized
+                    assert manager.custom_thumbnails_initialized is True
+
+                    # Test calling it again should not reinitialize
+                    mock_setup.reset_mock()
+                    mock_tooltip.reset_mock()
+                    mock_invalidate.reset_mock()
+
+                    manager._initialize_custom_thumbnails()
+
+                    # Verify no additional calls were made
+                    mock_setup.assert_not_called()
+                    mock_tooltip.assert_not_called()
+                    mock_invalidate.assert_not_called()
+
+                    # Should still be initialized
+                    assert manager.custom_thumbnails_initialized is True
+
 
 class TestTaskbarManagerInvalidation:
     """Test TaskbarManager invalidation functionality."""
@@ -867,6 +1131,9 @@ class TestTaskbarManagerInvalidation:
 
         manager = TaskbarManager(mock_window)
         manager.taskbar_button_created = True
+        manager.custom_thumbnails_initialized = (
+            True  # Must be initialized for invalidation to work
+        )
         manager.hwnd = 54321
 
         # Mock DwmInvalidateIconicBitmaps
@@ -894,12 +1161,56 @@ class TestTaskbarManagerInvalidation:
             # Verify DWM API was NOT called
             mock_dwm.assert_not_called()
 
+    def test_invalidate_live_preview_when_custom_thumbnails_not_initialized(
+        self, mock_modules, mock_window
+    ):
+        """Test live preview invalidation when custom thumbnails not initialized."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.custom_thumbnails_initialized = False  # Not initialized
+        manager.hwnd = 54321
+
+        # Mock DwmInvalidateIconicBitmaps
+        with patch("ctypes.windll.dwmapi.DwmInvalidateIconicBitmaps") as mock_dwm:
+            # Test invalidation
+            manager.InvalidateLivePreview()
+
+            # Verify DWM API was NOT called
+            mock_dwm.assert_not_called()
+
+    def test_auto_invalidate_when_custom_thumbnails_not_initialized(
+        self, mock_modules, mock_window
+    ):
+        """Test auto-invalidation when custom thumbnails not initialized."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.custom_thumbnails_initialized = False  # Not initialized
+        manager.debounce_delay = 50
+
+        # Mock root.after to capture the callback
+        manager.root.after = MagicMock(return_value="timer_id")
+        manager.root.after_cancel = MagicMock()
+
+        # Test auto invalidation
+        manager._auto_invalidate_thumbnails()
+
+        # Verify timer was NOT scheduled since custom thumbnails aren't initialized
+        manager.root.after.assert_not_called()
+        manager.root.after_cancel.assert_not_called()
+
     def test_auto_invalidate_thumbnails_parameters(self, mock_modules, mock_window):
         """Test automatic thumbnail invalidation with parameter verification."""
         from taskbar_manager import TaskbarManager
 
         manager = TaskbarManager(mock_window)
         manager.taskbar_button_created = True
+        manager.custom_thumbnails_initialized = (
+            True  # Must be initialized for auto-invalidation to work
+        )
         manager.debounce_delay = 50
 
         # Mock root.after to capture the callback

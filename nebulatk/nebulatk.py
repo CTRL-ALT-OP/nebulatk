@@ -787,12 +787,17 @@ def __main__():
     sleep(4)
     window.show()"""
     window = Window(width=800, height=600)
+
+    def trigger_custom_thumbnail():
+        window.taskbar_manager.SetThumbnailClip(0, 0, 100, 100)
+
     btn = Button(
         window,
         width=100,
         height=100,
         mode="toggle",
         border_width=2,
+        command=trigger_custom_thumbnail,
     )
     btn.place(0, 0)
 
@@ -845,7 +850,13 @@ def __main__():
     anim2.start()
     Entry(window, width=100, height=50, text="hello").place(0, 100)
 
-    widget = Button(window, text="hello", width=100, height=100, fill="#FF0000").place(
+    widget = Button(
+        window,
+        text="hello",
+        width=100,
+        height=100,
+        fill="#FF0000",
+    ).place(
         200, 200
     )  # Red
     anim = animation_controller.Animation(
@@ -861,6 +872,7 @@ def __main__():
     button5.place(0, 0)
 
     window.taskbar_manager.SetProgress(20)
+    window.taskbar_manager.SetThumbnailNotification("info")
 
 
 if __name__ == "__main__":
