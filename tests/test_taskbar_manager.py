@@ -15,6 +15,8 @@ class MockWindow:
     def __init__(self):
         self.root = None
         self._setup_mock_root()
+        self.width = 1200
+        self.height = 900
 
     def _setup_mock_root(self):
         """Set up mock tkinter root."""
@@ -30,6 +32,28 @@ class MockCOMTypes:
     def __init__(self):
         self.GUID = MagicMock()
         self.CoInitialize = MagicMock()
+        self.CoUninitialize = MagicMock()
+        self.CoCreateInstance = MagicMock()
+        self.HRESULT = MagicMock()
+        self.POINTER = MagicMock()
+        self.IUnknown = MagicMock()
+        self.COMMETHOD = MagicMock()
+
+        # Set up comtypes.client module mock
+        self.client = MagicMock()
+        self.client.CreateObject = MagicMock()
+
+        # Configure CreateObject to return a comprehensive mock
+        mock_com_object = MagicMock()
+        mock_com_object.QueryInterface = MagicMock()
+        mock_com_object.AddRef = MagicMock(return_value=1)
+        mock_com_object.Release = MagicMock(return_value=0)
+
+        # Mock common COM interfaces that might be requested
+        mock_com_object.ITaskbarList3 = MagicMock()
+        mock_com_object.ITaskbarList4 = MagicMock()
+
+        self.client.CreateObject.return_value = mock_com_object
 
 
 class MockCTypes:
@@ -38,6 +62,7 @@ class MockCTypes:
     def __init__(self):
         self.windll = MagicMock()
         self.wintypes = MagicMock()
+        self.CFUNCTYPE = MagicMock()
         self.c_int = int
         self.c_void_p = MagicMock
         self.c_long = int
@@ -55,6 +80,7 @@ class MockCTypes:
         self.POINTER = MagicMock()
         self.Structure = MagicMock()
         self.WINFUNCTYPE = MagicMock()
+        self.HRESULT = MagicMock()
         self.sizeof = MagicMock(return_value=8)
 
         # Set up OleDLL mock for COM interface creation
@@ -101,10 +127,13 @@ def mock_modules():
 
     mock_ctypes.wintypes.RECT = MockRECT
 
+    mock_comtypes = MockCOMTypes()
+
     with patch.dict(
         "sys.modules",
         {
-            "comtypes": MockCOMTypes(),
+            "comtypes": mock_comtypes,
+            "comtypes.client": mock_comtypes.client,
             "ctypes": mock_ctypes,
             "ctypes.wintypes": mock_ctypes.wintypes,
         },
