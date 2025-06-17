@@ -1345,6 +1345,9 @@ class TaskbarManager:
         hr = self.vtbl.SetThumbnailToolTip(self.taskbar_interface, self.hwnd, text)
         return hr == 0
 
+    def _initialize_custom_thumbnails(self):
+        pass
+
     def manual_apply(self):
         """Manually apply taskbar features (for testing/debugging)."""
         if not self.taskbar_button_created:
