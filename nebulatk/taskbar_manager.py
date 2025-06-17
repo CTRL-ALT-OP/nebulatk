@@ -952,7 +952,7 @@ class TaskbarManager:
         # Taskbar state
         self.clip_rect = None
         self.taskbar_button_created = False
-        self.custom_thumbnails_initialized = True
+        self.custom_thumbnails_initialized = False
         self.auto_invalidate_enabled = True
         self.debounce_delay = 50  # 50ms debounce delay
 
@@ -1134,6 +1134,10 @@ class TaskbarManager:
     # Public API methods
     def SetThumbnailClip(self, x, y, width, height):
         """Set the thumbnail clipping rectangle."""
+        # Initialize custom thumbnails on first call
+        if not self.custom_thumbnails_initialized:
+            self._initialize_custom_thumbnails()
+
         # Validate and clamp all values
         x, y = ValidationHelper.validate_coordinates(x, y)
         width, height = ValidationHelper.validate_dimensions(
@@ -1149,6 +1153,10 @@ class TaskbarManager:
 
     def ClearThumbnailClip(self):
         """Clear the thumbnail clipping rectangle to show the full window."""
+        # Initialize custom thumbnails on first call if not already done
+        if not self.custom_thumbnails_initialized:
+            self._initialize_custom_thumbnails()
+
         self.clip_rect = None
 
         if self.taskbar_button_created:
@@ -1199,7 +1207,7 @@ class TaskbarManager:
 
     def InvalidateLivePreview(self):
         """Invalidate the live preview to force Windows to request a new one."""
-        if self.taskbar_button_created:
+        if self.taskbar_button_created and self.custom_thumbnails_initialized:
             self._invalidate_thumbnails()
 
     def _invalidate_thumbnails(self):
@@ -1266,16 +1274,22 @@ class TaskbarManager:
 
         if msg == TaskbarButtonCreated:
             self._on_taskbar_button_created()
-        elif msg == WindowsConstants.WM_DWMSENDICONICTHUMBNAIL:
+        elif (
+            msg == WindowsConstants.WM_DWMSENDICONICTHUMBNAIL
+            and self.custom_thumbnails_initialized
+        ):
             height = lparam & 0xFFFF
             width = (lparam >> 16) & 0xFFFF
             self._delegate_thumbnail_request(hwnd, width, height)
             return 0
-        elif msg == WindowsConstants.WM_DWMSENDICONICLIVEPREVIEWBITMAP:
+        elif (
+            msg == WindowsConstants.WM_DWMSENDICONICLIVEPREVIEWBITMAP
+            and self.custom_thumbnails_initialized
+        ):
             self._delegate_live_preview_request(hwnd)
             return 0
         elif msg in self._get_auto_invalidate_messages():
-            if self.auto_invalidate_enabled:
+            if self.auto_invalidate_enabled and self.custom_thumbnails_initialized:
                 self._auto_invalidate_thumbnails()
 
         return user32.CallWindowProcW(
@@ -1299,13 +1313,7 @@ class TaskbarManager:
         self._apply_taskbar_features()
 
     def _apply_taskbar_features(self):
-        """Apply all taskbar features like the working implementation."""
-        self._setup_custom_thumbnails()
-        self._set_thumbnail_tooltip("TaskbarManager Demo")
-
-        # Invalidate to trigger thumbnail request
-        self._invalidate_thumbnails()
-
+        """Apply basic taskbar features (custom thumbnails only initialized when SetThumbnailClip is called)."""
         self.taskbar_button_created = True
 
     def _setup_custom_thumbnails(self):
@@ -1346,12 +1354,24 @@ class TaskbarManager:
         return hr == 0
 
     def _initialize_custom_thumbnails(self):
-        pass
+        """Initialize custom thumbnail functionality (only called when SetThumbnailClip is used)."""
+        if self.custom_thumbnails_initialized:
+            return
+
+        self._setup_custom_thumbnails()
+        self._set_thumbnail_tooltip("TaskbarManager Demo")
+
+        # Invalidate to trigger thumbnail request
+        if self.taskbar_button_created:
+            self._invalidate_thumbnails()
+
+        self.custom_thumbnails_initialized = True
 
     def manual_apply(self):
         """Manually apply taskbar features (for testing/debugging)."""
         if not self.taskbar_button_created:
             self._apply_taskbar_features()
+        # Note: Custom thumbnails are only initialized when SetThumbnailClip is called
 
     # Delegation and polling methods
     def _delegate_thumbnail_request(self, hwnd, width, height):
@@ -1428,7 +1448,7 @@ class TaskbarManager:
     # Auto-invalidation methods
     def _auto_invalidate_thumbnails(self):
         """Automatically invalidate thumbnails and live previews when window updates."""
-        if not self.taskbar_button_created:
+        if not self.taskbar_button_created or not self.custom_thumbnails_initialized:
             return
 
         def schedule_invalidation():
