@@ -18,6 +18,7 @@ try:
         standard_methods,
         defaults,
         animation_controller,
+        taskbar_manager,
     )
 
     # Import Component and _widget classes from widgets.base
@@ -34,6 +35,7 @@ except ImportError:
     import standard_methods
     import defaults
     import animation_controller
+    import taskbar_manager
 
     # Import Component and _widget classes from widgets.base
     from widgets.base import Component, _widget, _widget_properties
@@ -135,6 +137,18 @@ class _window_internal(threading.Thread, Component):
         self.closing_command = closing_command
 
         self.defaults = defaults.new()
+
+        self._taskbar_manager = None
+
+    @property
+    def taskbar_manager(self):
+        if self._taskbar_manager is None:
+            self._taskbar_manager = taskbar_manager.TaskbarManager(self)
+        return self._taskbar_manager
+
+    @taskbar_manager.setter
+    def taskbar_manager(self, value):
+        return "Cannot set taskbar_manager"
 
     # NOTE: EVENT HANDLERS
 
@@ -840,6 +854,8 @@ def __main__():
 
     button5 = Button(container, text="hello", width=100, height=100, fill="#FF0000")
     button5.place(0, 0)
+
+    window.taskbar_manager.SetProgress(20)
 
 
 if __name__ == "__main__":
