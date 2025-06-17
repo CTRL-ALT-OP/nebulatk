@@ -1,4 +1,5 @@
 # Import tkinter and filedialog
+import sys
 import threading
 import tkinter as tk
 
@@ -142,7 +143,11 @@ class _window_internal(threading.Thread, Component):
 
     @property
     def taskbar_manager(self):
-        if self._taskbar_manager is None:
+        if (
+            self._taskbar_manager is None
+            and sys.platform == "win32"
+            and self.root is not None
+        ):
             self._taskbar_manager = taskbar_manager.TaskbarManager(self)
         return self._taskbar_manager
 

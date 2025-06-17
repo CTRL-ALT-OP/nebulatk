@@ -450,43 +450,39 @@ class TestTaskbarManagerValidation:
 
     def test_validate_dimensions(self, mock_modules, mock_window):
         """Test dimension validation and clamping."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
+        from taskbar_manager import ValidationHelper
 
         # Test normal dimensions
-        width, height = manager._validate_dimensions(800, 600)
+        width, height = ValidationHelper.validate_dimensions(800, 600)
         assert width == 800
         assert height == 600
 
         # Test zero/negative dimensions
-        width, height = manager._validate_dimensions(0, -100)
+        width, height = ValidationHelper.validate_dimensions(0, -100)
         assert width == 1
         assert height == 1
 
         # Test oversized dimensions
-        width, height = manager._validate_dimensions(50000, 50000)
+        width, height = ValidationHelper.validate_dimensions(50000, 50000)
         assert width == 32767  # MAX_DIMENSION
         assert height == 32767  # MAX_DIMENSION
 
     def test_validate_coordinates(self, mock_modules, mock_window):
         """Test coordinate validation and clamping."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
+        from taskbar_manager import ValidationHelper
 
         # Test normal coordinates
-        x, y = manager._validate_coordinates(100, 200)
+        x, y = ValidationHelper.validate_coordinates(100, 200)
         assert x == 100
         assert y == 200
 
         # Test negative coordinates
-        x, y = manager._validate_coordinates(-50, -100)
+        x, y = ValidationHelper.validate_coordinates(-50, -100)
         assert x == 0
         assert y == 0
 
         # Test with max bounds
-        x, y = manager._validate_coordinates(1000, 2000, max_x=500, max_y=800)
+        x, y = ValidationHelper.validate_coordinates(1000, 2000, max_x=500, max_y=800)
         assert x == 500
         assert y == 800
 
@@ -525,17 +521,19 @@ class TestTaskbarManagerThumbnails:
         from taskbar_manager import TaskbarManager
 
         manager = TaskbarManager(mock_window)
+        manager.bitmap_creator = MagicMock()
 
-        # Mock _create_thumbnail_bitmap
-        with patch.object(manager, "_create_thumbnail_bitmap") as mock_create:
-            mock_create.return_value = 3001
+        # Mock bitmap creator's create_thumbnail_bitmap method
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = 3001
 
-            # Test full thumbnail creation
-            result = manager._create_full_thumbnail(200, 150)
+        # Test full thumbnail creation
+        result = manager._create_full_thumbnail(200, 150)
 
-            # Verify bitmap creation was called
-            mock_create.assert_called_once_with(0, 0, None, None, 200, 150)
-            assert result == 3001
+        # Verify bitmap creation was called with correct parameters
+        manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+            0, 0, None, None, 200, 150, bypass_clipping=True
+        )
+        assert result == 3001
 
     def test_handle_thumbnail_request_safe_parameters(self, mock_modules, mock_window):
         """Test safe thumbnail request handling with parameter verification."""
@@ -544,6 +542,7 @@ class TestTaskbarManagerThumbnails:
         manager = TaskbarManager(mock_window)
         manager.clip_rect = None
         manager.hwnd = 12345
+        manager.bitmap_creator = MagicMock()
 
         # Mock bitmap creation
         with patch.object(manager, "_create_full_thumbnail") as mock_create:
@@ -577,6 +576,7 @@ class TestTaskbarManagerThumbnails:
 
         manager = TaskbarManager(mock_window)
         manager.hwnd = 12345
+        manager.bitmap_creator = MagicMock()
 
         # Set up clipping rectangle
         from ctypes import wintypes
@@ -607,6 +607,56 @@ class TestTaskbarManagerThumbnails:
                     # Verify bitmap was cleaned up
                     mock_delete.assert_called_once_with(3002)
 
+    def test_create_clipped_thumbnail_parameters(self, mock_modules, mock_window):
+        """Test clipped thumbnail creation with parameter verification."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.bitmap_creator = MagicMock()
+
+        # Set up clipping rectangle
+        from ctypes import wintypes
+
+        manager.clip_rect = wintypes.RECT(10, 20, 310, 420)
+
+        # Mock bitmap creator's create_thumbnail_bitmap method
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = 3004
+
+        # Test clipped thumbnail creation
+        result = manager._create_clipped_thumbnail(200, 150)
+
+        # Verify bitmap creation was called with correct clip parameters
+        manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+            10,  # clip_rect.left
+            20,  # clip_rect.top
+            300,  # clip_rect.right - clip_rect.left
+            400,  # clip_rect.bottom - clip_rect.top
+            200,  # thumb_width
+            150,  # thumb_height
+            clip_rect=manager.clip_rect,
+        )
+        assert result == 3004
+
+    def test_create_live_preview_bitmap_parameters(self, mock_modules, mock_window):
+        """Test live preview bitmap creation with parameter verification."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.hwnd = 12345
+        manager.bitmap_creator = MagicMock()
+
+        # Mock bitmap creator's create_thumbnail_bitmap method
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = 3005
+
+        # Test live preview bitmap creation
+        result = manager._create_live_preview_bitmap(400, 300)
+
+        # Verify bitmap creation was called with bypass_clipping=True
+        manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+            0, 0, 400, 300, 400, 300, bypass_clipping=True
+        )
+        assert result == 3005
+
     def test_handle_live_preview_request_safe_parameters(
         self, mock_modules, mock_window
     ):
@@ -615,6 +665,7 @@ class TestTaskbarManagerThumbnails:
 
         manager = TaskbarManager(mock_window)
         manager.hwnd = 12345
+        manager.bitmap_creator = MagicMock()
 
         # Mock client rect
         mock_rect = MagicMock()
@@ -657,77 +708,6 @@ class TestTaskbarManagerThumbnails:
 
                             # Verify bitmap was cleaned up
                             mock_delete.assert_called_once_with(3003)
-
-    def test_create_clipped_thumbnail_parameters(self, mock_modules, mock_window):
-        """Test clipped thumbnail creation with parameter verification."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
-
-        # Set up clipping rectangle
-        from ctypes import wintypes
-
-        manager.clip_rect = wintypes.RECT(10, 20, 310, 420)
-
-        # Mock _create_thumbnail_bitmap
-        with patch.object(manager, "_create_thumbnail_bitmap") as mock_create:
-            mock_create.return_value = 3004
-
-            # Test clipped thumbnail creation
-            result = manager._create_clipped_thumbnail(200, 150)
-
-            # Verify bitmap creation was called with correct clip parameters
-            mock_create.assert_called_once_with(
-                10,  # clip_rect.left
-                20,  # clip_rect.top
-                300,  # clip_rect.right - clip_rect.left
-                400,  # clip_rect.bottom - clip_rect.top
-                200,  # thumb_width
-                150,  # thumb_height
-            )
-            assert result == 3004
-
-    def test_create_live_preview_bitmap_parameters(self, mock_modules, mock_window):
-        """Test live preview bitmap creation with parameter verification."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
-        manager.hwnd = 12345
-
-        # Mock client rect
-        mock_rect = MagicMock()
-        mock_rect.right = 1024
-        mock_rect.left = 0
-        mock_rect.bottom = 768
-        mock_rect.top = 0
-
-        # Mock _create_thumbnail_bitmap
-        with patch.object(manager, "_create_thumbnail_bitmap") as mock_create:
-            mock_create.return_value = 3005
-
-            # Mock GetClientRect
-            with patch("ctypes.windll.user32.GetClientRect") as mock_get_rect:
-                mock_get_rect.return_value = True
-
-                # Mock wintypes.RECT instantiation
-                with patch("ctypes.wintypes.RECT", return_value=mock_rect):
-                    # Test live preview bitmap creation
-                    result = manager._create_live_preview_bitmap(400, 300)
-
-                    # Verify GetClientRect was called with correct hwnd
-                    mock_get_rect.assert_called_once()
-
-                    # Verify bitmap creation was called with bypass_clipping=True
-                    mock_create.assert_called_once_with(
-                        0,  # src_x
-                        0,  # src_y
-                        1024,  # client_width
-                        768,  # client_height
-                        400,  # width
-                        300,  # height
-                        bypass_clipping=True,
-                    )
-                    assert result == 3005
 
 
 class TestTaskbarManagerTooltips:
@@ -1085,78 +1065,76 @@ class TestTaskbarManagerValidationEdgeCases:
 
     def test_validate_dimensions_edge_cases(self, mock_modules, mock_window):
         """Test dimension validation edge cases."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
+        from taskbar_manager import ValidationHelper
 
         # Test float inputs (should be converted to int)
-        width, height = manager._validate_dimensions(800.7, 600.3)
+        width, height = ValidationHelper.validate_dimensions(800.7, 600.3)
         assert width == 800
         assert height == 600
         assert isinstance(width, int)
         assert isinstance(height, int)
 
         # Test very large negative numbers
-        width, height = manager._validate_dimensions(-99999, -88888)
+        width, height = ValidationHelper.validate_dimensions(-99999, -88888)
         assert width == 1
         assert height == 1
 
         # Test exact boundary values
-        width, height = manager._validate_dimensions(32767, 32767)
+        width, height = ValidationHelper.validate_dimensions(32767, 32767)
         assert width == 32767
         assert height == 32767
 
         # Test just over boundary
-        width, height = manager._validate_dimensions(32768, 32768)
+        width, height = ValidationHelper.validate_dimensions(32768, 32768)
         assert width == 32767  # Should be clamped
         assert height == 32767  # Should be clamped
 
     def test_validate_coordinates_edge_cases(self, mock_modules, mock_window):
         """Test coordinate validation edge cases."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
+        from taskbar_manager import ValidationHelper
 
         # Test float inputs (should be converted to int)
-        x, y = manager._validate_coordinates(100.9, 200.1)
+        x, y = ValidationHelper.validate_coordinates(100.9, 200.1)
         assert x == 100
         assert y == 200
         assert isinstance(x, int)
         assert isinstance(y, int)
 
         # Test very large negative numbers
-        x, y = manager._validate_coordinates(-50000, -60000)
+        x, y = ValidationHelper.validate_coordinates(-50000, -60000)
         assert x == 0
         assert y == 0
 
         # Test with max bounds as floats
-        x, y = manager._validate_coordinates(1000.5, 2000.7, max_x=500.2, max_y=800.8)
+        x, y = ValidationHelper.validate_coordinates(
+            1000.5, 2000.7, max_x=500.2, max_y=800.8
+        )
         assert x == 500  # Should respect int(max_x)
         assert y == 800  # Should respect int(max_y)
 
         # Test exact boundary values
-        x, y = manager._validate_coordinates(32767, 32767)
+        x, y = ValidationHelper.validate_coordinates(32767, 32767)
         assert x == 32767
         assert y == 32767
 
         # Test just over boundary
-        x, y = manager._validate_coordinates(32768, 32768)
+        x, y = ValidationHelper.validate_coordinates(32768, 32768)
         assert x == 32767  # Should be clamped
         assert y == 32767  # Should be clamped
 
     def test_dimension_validation_with_name_parameter(self, mock_modules, mock_window):
         """Test dimension validation with custom name parameter for error messages."""
-        from taskbar_manager import TaskbarManager
-
-        manager = TaskbarManager(mock_window)
+        from taskbar_manager import ValidationHelper
 
         # Test with custom name (should not affect validation logic, just messaging)
-        width, height = manager._validate_dimensions(50000, 40000, "custom region")
+        width, height = ValidationHelper.validate_dimensions(
+            50000, 40000, "custom region"
+        )
         assert width == 32767
         assert height == 32767
 
         # Test normal case with custom name
-        width, height = manager._validate_dimensions(800, 600, "test area")
+        width, height = ValidationHelper.validate_dimensions(800, 600, "test area")
         assert width == 800
         assert height == 600
 
@@ -1170,6 +1148,7 @@ class TestTaskbarManagerErrorHandling:
 
         manager = TaskbarManager(mock_window)
         manager.clip_rect = None
+        manager.bitmap_creator = MagicMock()
 
         # Mock bitmap creation to fail
         with patch.object(manager, "_create_full_thumbnail") as mock_create:
@@ -1297,54 +1276,55 @@ class TestTaskbarManagerIntegration:
         manager = TaskbarManager(mock_window)
         manager.hwnd = 99999
         manager.taskbar_button_created = True
+        manager.bitmap_creator = MagicMock()
 
         # Set up comprehensive mocking for the entire workflow
-        with patch.object(manager, "_create_thumbnail_bitmap") as mock_create_bitmap:
-            mock_create_bitmap.return_value = 4001  # Mock bitmap handle
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = (
+            4001  # Mock bitmap handle
+        )
 
-            with patch(
-                "ctypes.windll.dwmapi.DwmSetIconicThumbnail"
-            ) as mock_set_thumbnail:
-                mock_set_thumbnail.return_value = 0
+        with patch("ctypes.windll.dwmapi.DwmSetIconicThumbnail") as mock_set_thumbnail:
+            mock_set_thumbnail.return_value = 0
 
-                with patch("ctypes.windll.gdi32.DeleteObject") as mock_delete:
-                    mock_delete.return_value = True
+            with patch("ctypes.windll.gdi32.DeleteObject") as mock_delete:
+                mock_delete.return_value = True
 
-                    # 1. Set clipping rectangle
-                    manager.SetThumbnailClip(50, 75, 400, 300)
+                # 1. Set clipping rectangle
+                manager.SetThumbnailClip(50, 75, 400, 300)
 
-                    # 2. Simulate thumbnail request
-                    manager._delegate_thumbnail_request(99999, 250, 200)
+                # 2. Simulate thumbnail request
+                manager._delegate_thumbnail_request(99999, 250, 200)
 
-                    # 3. Process the request
-                    manager._handle_thumbnail_request_safe(99999, 250, 200)
+                # 3. Process the request
+                manager._handle_thumbnail_request_safe(99999, 250, 200)
 
-                    # Verify the complete workflow
-                    # Clipping should be set correctly
-                    assert manager.clip_rect.left == 50
-                    assert manager.clip_rect.top == 75
-                    assert manager.clip_rect.right == 450  # 50 + 400
-                    assert manager.clip_rect.bottom == 375  # 75 + 300
+                # Verify the complete workflow
+                # Clipping should be set correctly
+                assert manager.clip_rect.left == 50
+                assert manager.clip_rect.top == 75
+                assert manager.clip_rect.right == 450  # 50 + 400
+                assert manager.clip_rect.bottom == 375  # 75 + 300
 
-                    # Request should be delegated correctly
-                    assert manager.thumbnail_width == 250
-                    assert manager.thumbnail_height == 200
+                # Request should be delegated correctly
+                assert manager.thumbnail_width == 250
+                assert manager.thumbnail_height == 200
 
-                    # Bitmap should be created with clipped parameters
-                    mock_create_bitmap.assert_called_once_with(
-                        50,  # clip_rect.left
-                        75,  # clip_rect.top
-                        400,  # width
-                        300,  # height
-                        250,  # thumb_width
-                        200,  # thumb_height
-                    )
+                # Bitmap should be created with clipped parameters
+                manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+                    50,  # clip_rect.left
+                    75,  # clip_rect.top
+                    400,  # width
+                    300,  # height
+                    250,  # thumb_width
+                    200,  # thumb_height
+                    clip_rect=manager.clip_rect,
+                )
 
-                    # DWM should be called with correct parameters
-                    mock_set_thumbnail.assert_called_once_with(99999, 4001, 0)
+                # DWM should be called with correct parameters
+                mock_set_thumbnail.assert_called_once_with(99999, 4001, 0)
 
-                    # Bitmap should be cleaned up
-                    mock_delete.assert_called_once_with(4001)
+                # Bitmap should be cleaned up
+                mock_delete.assert_called_once_with(4001)
 
     def test_complete_live_preview_workflow(self, mock_modules, mock_window):
         """Test complete live preview workflow with parameter verification."""
@@ -1353,6 +1333,7 @@ class TestTaskbarManagerIntegration:
         manager = TaskbarManager(mock_window)
         manager.hwnd = 88888
         manager.taskbar_button_created = True
+        manager.bitmap_creator = MagicMock()
 
         # Mock client rect for live preview
         mock_rect = MagicMock()
@@ -1362,49 +1343,42 @@ class TestTaskbarManagerIntegration:
         mock_rect.top = 0
 
         # Set up comprehensive mocking for live preview workflow
-        with patch.object(manager, "_create_thumbnail_bitmap") as mock_create_bitmap:
-            mock_create_bitmap.return_value = 5001  # Mock bitmap handle
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = (
+            5001  # Mock bitmap handle
+        )
 
-            with patch(
-                "ctypes.windll.dwmapi.DwmSetIconicLivePreviewBitmap"
-            ) as mock_set_preview:
-                mock_set_preview.return_value = 0
+        with patch(
+            "ctypes.windll.dwmapi.DwmSetIconicLivePreviewBitmap"
+        ) as mock_set_preview:
+            mock_set_preview.return_value = 0
 
-                with patch("ctypes.windll.user32.GetClientRect") as mock_get_rect:
-                    mock_get_rect.return_value = True
+            with patch("ctypes.windll.user32.GetClientRect") as mock_get_rect:
+                mock_get_rect.return_value = True
 
-                    with patch("ctypes.wintypes.RECT", return_value=mock_rect):
-                        with patch("ctypes.windll.gdi32.DeleteObject") as mock_delete:
-                            mock_delete.return_value = True
+                with patch("ctypes.wintypes.RECT", return_value=mock_rect):
+                    with patch("ctypes.windll.gdi32.DeleteObject") as mock_delete:
+                        mock_delete.return_value = True
 
-                            # 1. Simulate live preview request
-                            manager._delegate_live_preview_request(88888)
+                        # 1. Simulate live preview request
+                        manager._delegate_live_preview_request(88888)
 
-                            # 2. Process the request
-                            manager._handle_live_preview_request_safe(88888)
+                        # 2. Process the request
+                        manager._handle_live_preview_request_safe(88888)
 
-                            # Verify the complete workflow
-                            # Request should be delegated correctly
-                            assert manager.live_preview_request_flag is True
+                        # Verify the complete workflow
+                        # Request should be delegated correctly
+                        assert manager.live_preview_request_flag is True
 
-                            # Client rect should be queried (may be called multiple times due to initialization)
-                            assert mock_get_rect.call_count >= 1
+                        # Client rect should be queried (may be called multiple times due to initialization)
+                        assert mock_get_rect.call_count >= 1
 
-                            # Bitmap should be created with bypass_clipping=True
-                            mock_create_bitmap.assert_called_once_with(
-                                0,  # src_x
-                                0,  # src_y
-                                1200,  # client_width
-                                900,  # client_height
-                                1200,  # width (same as client)
-                                900,  # height (same as client)
-                                bypass_clipping=True,
-                            )
+                        # Bitmap should be created with bypass_clipping=True
+                        manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+                            0, 0, 1200, 900, 1200, 900, bypass_clipping=True
+                        )
 
-                            # DWM should be called with correct parameters
-                            mock_set_preview.assert_called_once_with(
-                                88888, 5001, None, 0
-                            )
+                        # DWM should be called with correct parameters
+                        mock_set_preview.assert_called_once_with(88888, 5001, None, 0)
 
-                            # Bitmap should be cleaned up
-                            mock_delete.assert_called_once_with(5001)
+                        # Bitmap should be cleaned up
+                        mock_delete.assert_called_once_with(5001)
