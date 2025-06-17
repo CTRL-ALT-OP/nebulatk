@@ -952,6 +952,7 @@ class TaskbarManager:
         # Taskbar state
         self.clip_rect = None
         self.taskbar_button_created = False
+        self.custom_thumbnails_initialized = True
         self.auto_invalidate_enabled = True
         self.debounce_delay = 50  # 50ms debounce delay
 
