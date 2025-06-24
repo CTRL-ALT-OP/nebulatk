@@ -96,7 +96,7 @@ def normalize_angle(angle):
 
 
 def get_rect_points(_object):
-    """Checks if a point is inside a given object's rectangular bounds approximation"""
+    """Gets 4 points of a rectangle, given the object's position and orientation"""
 
     # Add up positions for relative offsets in parent tree
     x = _object.x
@@ -155,6 +155,7 @@ def get_rect_area(_object):
 
 
 def get_triangle_area(a, b, c):
+    """Gets the area of a triangle, given 3 points"""
     return (
         abs(
             (b[0] * a[1] - a[0] * b[1])
