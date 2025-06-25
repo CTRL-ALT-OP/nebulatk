@@ -488,44 +488,453 @@ class ThumbnailToolbarManager:
         Args:
             callbacks (dict, optional): Dictionary mapping button IDs to callback functions
             custom_icons (dict, optional): Dictionary mapping button names to icon sources.
+                                         Can be file paths, system icon specs, or HICON handles.
+
+                                         Example:
+                                         {
+                                             'backward': 'path/to/prev.ico',
+                                             'play': ('shell32.dll', 16),  # DLL and index
+                                             'pause': hicon_handle,        # Direct HICON
+                                             'forward': 'path/to/next.png',
+                                             'stop': 'path/to/stop.ico'
+                                         }
         """
-        pass
+        if callbacks is None:
+            callbacks = {}
+        if custom_icons is None:
+            custom_icons = {}
+
+        # Load icons (custom or system defaults)
+        icons = self._load_button_icons(custom_icons)
+
+        # Create button structures
+        buttons = []
+
+        # Backward button
+        backward_btn = THUMBBUTTON()
+        backward_btn.dwMask = (
+            THUMBBUTTON.THB_ICON | THUMBBUTTON.THB_TOOLTIP | THUMBBUTTON.THB_FLAGS
+        )
+        backward_btn.iId = WindowsConstants.THUMB_BUTTON_BACKWARD
+        backward_btn.hIcon = icons.get("backward", None)
+        backward_btn.szTip = "Previous"
+        backward_btn.dwFlags = WindowsConstants.THBF_ENABLED
+        buttons.append(backward_btn)
+
+        # Play/Pause button (starts as play)
+        play_pause_btn = THUMBBUTTON()
+        play_pause_btn.dwMask = (
+            THUMBBUTTON.THB_ICON | THUMBBUTTON.THB_TOOLTIP | THUMBBUTTON.THB_FLAGS
+        )
+        play_pause_btn.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        play_pause_btn.hIcon = icons.get("play", None)
+        play_pause_btn.szTip = "Play"
+        play_pause_btn.dwFlags = WindowsConstants.THBF_ENABLED
+        buttons.append(play_pause_btn)
+
+        # Forward button
+        forward_btn = THUMBBUTTON()
+        forward_btn.dwMask = (
+            THUMBBUTTON.THB_ICON | THUMBBUTTON.THB_TOOLTIP | THUMBBUTTON.THB_FLAGS
+        )
+        forward_btn.iId = WindowsConstants.THUMB_BUTTON_FORWARD
+        forward_btn.hIcon = icons.get("forward", None)
+        forward_btn.szTip = "Next"
+        forward_btn.dwFlags = WindowsConstants.THBF_ENABLED
+        buttons.append(forward_btn)
+
+        # Stop button
+        stop_btn = THUMBBUTTON()
+        stop_btn.dwMask = (
+            THUMBBUTTON.THB_ICON | THUMBBUTTON.THB_TOOLTIP | THUMBBUTTON.THB_FLAGS
+        )
+        stop_btn.iId = WindowsConstants.THUMB_BUTTON_STOP
+        stop_btn.hIcon = icons.get("stop", None)
+        stop_btn.szTip = "Stop"
+        stop_btn.dwFlags = WindowsConstants.THBF_ENABLED
+        buttons.append(stop_btn)
+
+        self.buttons = buttons
+        self.button_callbacks = callbacks
+        self._icons = icons  # Keep reference to prevent GC
+
+        return self._add_buttons_to_taskbar()
 
     def _load_button_icons(self, custom_icons):
-        pass
+        """Load icons for buttons, using custom icons where specified or system defaults."""
+        icons = {}
+
+        # Default system icons mapping
+        default_system_icons = {
+            "backward": ("imageres.dll", 260),  # Previous track
+            "play": ("imageres.dll", 261),  # Play
+            "pause": ("imageres.dll", 262),  # Pause
+            "forward": ("imageres.dll", 263),  # Next track
+            "stop": ("imageres.dll", 264),  # Stop
+        }
+
+        # Load each icon
+        for icon_name in ["backward", "play", "pause", "forward", "stop"]:
+            if icon_name in custom_icons:
+                # Try to load custom icon
+                icon = self._load_custom_icon(custom_icons[icon_name], icon_name)
+                if icon:
+                    icons[icon_name] = icon
+                    continue
+                else:
+                    print(
+                        f"⚠️  Failed to load custom icon for {icon_name}, using system default"
+                    )
+
+            # Fall back to system default
+            dll_name, icon_index = default_system_icons[icon_name]
+            icon = self._load_system_icon(dll_name, icon_index)
+            if icon:
+                icons[icon_name] = icon
+            else:
+                print(f"⚠️  Failed to load system icon for {icon_name}")
+
+        return icons
 
     def _load_custom_icon(self, icon_source, icon_name):
-        return None
+        """
+        Load a custom icon from various sources.
+
+        Args:
+            icon_source: Can be:
+                        - String: File path to icon file (.ico, .png, .bmp, etc.)
+                        - Tuple: (dll_name, icon_index) for system DLL icons
+                        - Integer: HICON handle (already loaded icon)
+
+        Returns:
+            HICON handle or None if failed
+        """
+        try:
+            if isinstance(icon_source, str):
+                # File path
+                return self._load_icon_from_file(icon_source)
+            elif isinstance(icon_source, tuple) and len(icon_source) == 2:
+                # (dll_name, icon_index)
+                dll_name, icon_index = icon_source
+                return self._load_system_icon(dll_name, icon_index)
+            elif isinstance(icon_source, int):
+                # Direct HICON handle
+                return icon_source if icon_source != 0 else None
+            else:
+                print(
+                    f"❌ Invalid icon source type for {icon_name}: {type(icon_source)}"
+                )
+                return None
+        except Exception as e:
+            print(f"❌ Error loading custom icon for {icon_name}: {e}")
+            return None
 
     def _load_icon_from_file(self, file_path):
-        return None
+        """Load an icon from a file (.ico, .png, .bmp, etc.)."""
+        import os
+
+        if not os.path.exists(file_path):
+            print(f"❌ Icon file not found: {file_path}")
+            return None
+
+        try:
+            user32 = ctypes.windll.user32
+
+            # Get file extension to determine loading method
+            ext = os.path.splitext(file_path)[1].lower()
+
+            if ext == ".ico":
+                # Load .ico file directly
+                hicon = user32.LoadImageW(
+                    None,  # hInst
+                    file_path,  # name
+                    1,  # IMAGE_ICON
+                    16,  # desired width (16x16 for taskbar)
+                    16,  # desired height
+                    0x00000010 | 0x00002000,  # LR_LOADFROMFILE | LR_DEFAULTSIZE
+                )
+            else:
+                # For other formats (.png, .bmp, etc.), we need to load as bitmap first
+                # then convert to icon
+                hbitmap = user32.LoadImageW(
+                    None,  # hInst
+                    file_path,  # name
+                    0,  # IMAGE_BITMAP
+                    16,  # desired width
+                    16,  # desired height
+                    0x00000010 | 0x00002000,  # LR_LOADFROMFILE | LR_DEFAULTSIZE
+                )
+
+                if hbitmap:
+                    # Convert bitmap to icon
+                    hicon = self._bitmap_to_icon(hbitmap)
+                    # Clean up bitmap
+                    ctypes.windll.gdi32.DeleteObject(hbitmap)
+                else:
+                    hicon = None
+
+            if hicon and hicon != 0:
+                # Store for cleanup later
+                if "custom_icons" not in self.button_icons:
+                    self.button_icons["custom_icons"] = []
+                self.button_icons["custom_icons"].append(hicon)
+                return hicon
+            else:
+                print(f"❌ Failed to load icon from file: {file_path}")
+                return None
+
+        except Exception as e:
+            print(f"❌ Error loading icon from file {file_path}: {e}")
+            return None
 
     def _bitmap_to_icon(self, hbitmap):
-        return None
+        """Convert a bitmap handle to an icon handle."""
+        try:
+            user32 = ctypes.windll.user32
+            gdi32 = ctypes.windll.gdi32
+
+            # Get bitmap info
+            bitmap_info = ctypes.create_string_buffer(24)  # BITMAP structure
+            gdi32.GetObjectW(hbitmap, 24, bitmap_info)
+
+            # Create icon info structure
+            class ICONINFO(ctypes.Structure):
+                _fields_ = [
+                    ("fIcon", ctypes.c_bool),
+                    ("xHotspot", ctypes.c_uint32),
+                    ("yHotspot", ctypes.c_uint32),
+                    ("hbmMask", wintypes.HBITMAP),
+                    ("hbmColor", wintypes.HBITMAP),
+                ]
+
+            # Create mask bitmap (same size, monochrome)
+            hdc = user32.GetDC(None)
+            hbm_mask = gdi32.CreateCompatibleBitmap(hdc, 16, 16)
+            user32.ReleaseDC(None, hdc)
+
+            if not hbm_mask:
+                return None
+
+            icon_info = ICONINFO()
+            icon_info.fIcon = True
+            icon_info.xHotspot = 0
+            icon_info.yHotspot = 0
+            icon_info.hbmMask = hbm_mask
+            icon_info.hbmColor = hbitmap
+
+            # Create icon
+            hicon = user32.CreateIconIndirect(ctypes.byref(icon_info))
+
+            # Clean up mask bitmap
+            gdi32.DeleteObject(hbm_mask)
+
+            return hicon if hicon and hicon != 0 else None
+
+        except Exception as e:
+            print(f"❌ Error converting bitmap to icon: {e}")
+            return None
 
     def _load_system_icon(self, dll_name, icon_index):
-        return None
+        """Load an icon from a system DLL."""
+        try:
+            shell32 = ctypes.windll.shell32
+            hicon = shell32.ExtractIconW(0, dll_name, icon_index)
+            return hicon if hicon and hicon != 1 else None
+        except:
+            return None
 
     def _add_buttons_to_taskbar(self):
-        pass
+        """Add the buttons to the taskbar."""
+        if not self.buttons:
+            return False
+
+        try:
+            # Create array of THUMBBUTTON structures
+            button_array = (THUMBBUTTON * len(self.buttons))(*self.buttons)
+
+            # Add buttons to taskbar
+            hr = self.taskbar_manager.vtbl.ThumbBarAddButtons(
+                self.taskbar_manager.taskbar_interface,
+                self.taskbar_manager.hwnd,
+                len(self.buttons),
+                ctypes.cast(button_array, ctypes.c_void_p),
+            )
+
+            return hr == 0
+        except Exception as e:
+            print(f"❌ Error adding thumbnail buttons: {e}")
+            return False
 
     def update_play_pause_button(self, is_playing=None):
-        pass
+        """Update the play/pause button state and icon."""
+        if is_playing is not None:
+            self.is_playing = is_playing
+        else:
+            self.is_playing = not self.is_playing
+
+        # Find the play/pause button
+        play_pause_btn = None
+        for btn in self.buttons:
+            if btn.iId == WindowsConstants.THUMB_BUTTON_PLAY_PAUSE:
+                play_pause_btn = btn
+                break
+
+        if play_pause_btn is None:
+            return False
+
+        # Update icon and tooltip based on state
+        if self.is_playing:
+            play_pause_btn.hIcon = self._icons.get("pause", None)
+            play_pause_btn.szTip = "Pause"
+        else:
+            play_pause_btn.hIcon = self._icons.get("play", None)
+            play_pause_btn.szTip = "Play"
+
+        # Update the button on taskbar
+        try:
+            button_array = (THUMBBUTTON * 1)(play_pause_btn)
+            hr = self.taskbar_manager.vtbl.ThumbBarUpdateButtons(
+                self.taskbar_manager.taskbar_interface,
+                self.taskbar_manager.hwnd,
+                1,
+                ctypes.cast(button_array, ctypes.c_void_p),
+            )
+            return hr == 0
+        except Exception as e:
+            print(f"❌ Error updating play/pause button: {e}")
+            return False
 
     def set_button_enabled(self, button_id, enabled=True):
-        pass
+        """Enable or disable a specific button."""
+        button = None
+        for btn in self.buttons:
+            if btn.iId == button_id:
+                button = btn
+                break
+
+        if button is None:
+            return False
+
+        # Update button flags
+        if enabled:
+            button.dwFlags = WindowsConstants.THBF_ENABLED
+        else:
+            button.dwFlags = WindowsConstants.THBF_DISABLED
+
+        # Update the button on taskbar
+        try:
+            button_array = (THUMBBUTTON * 1)(button)
+            hr = self.taskbar_manager.vtbl.ThumbBarUpdateButtons(
+                self.taskbar_manager.taskbar_interface,
+                self.taskbar_manager.hwnd,
+                1,
+                ctypes.cast(button_array, ctypes.c_void_p),
+            )
+            return hr == 0
+        except Exception as e:
+            print(f"❌ Error updating button state: {e}")
+            return False
 
     def handle_button_click(self, button_id):
-        pass
+        """Handle button click events."""
+        if button_id == WindowsConstants.THUMB_BUTTON_PLAY_PAUSE:
+            self.update_play_pause_button()
+
+        # Call user-defined callback if available
+        callback = self.button_callbacks.get(button_id)
+        if callback and callable(callback):
+            try:
+                callback(
+                    button_id,
+                    (
+                        self.is_playing
+                        if button_id == WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+                        else None
+                    ),
+                )
+            except Exception as e:
+                print(f"❌ Error in button callback: {e}")
+
+        return True
 
     def update_button_icon(self, button_id, icon_source):
-        pass
+        """
+        Update the icon for a specific button.
+
+        Args:
+            button_id (int): Button ID (WindowsConstants.THUMB_BUTTON_*)
+            icon_source: Icon source (same format as in create_media_buttons)
+
+        Returns:
+            bool: True if icon was updated successfully
+        """
+        # Load the new icon
+        icon = self._load_custom_icon(icon_source, f"button_{button_id}")
+        if not icon:
+            return False
+
+        # Find the button
+        button = None
+        for btn in self.buttons:
+            if btn.iId == button_id:
+                button = btn
+                break
+
+        if not button:
+            print(f"❌ Button with ID {button_id} not found")
+            return False
+
+        # Update button icon
+        old_icon = button.hIcon
+        button.hIcon = icon
+
+        # Update on taskbar
+        try:
+            button_array = (THUMBBUTTON * 1)(button)
+            hr = self.taskbar_manager.vtbl.ThumbBarUpdateButtons(
+                self.taskbar_manager.taskbar_interface,
+                self.taskbar_manager.hwnd,
+                1,
+                ctypes.cast(button_array, ctypes.c_void_p),
+            )
+
+            if hr == 0:
+                # Clean up old icon if it was custom
+                if old_icon and "custom_icons" in self.button_icons:
+                    if old_icon in self.button_icons["custom_icons"]:
+                        ctypes.windll.user32.DestroyIcon(old_icon)
+                        self.button_icons["custom_icons"].remove(old_icon)
+
+                # Store new icon for cleanup
+                if "custom_icons" not in self.button_icons:
+                    self.button_icons["custom_icons"] = []
+                self.button_icons["custom_icons"].append(icon)
+
+                return True
+            else:
+                print(f"❌ Failed to update button icon on taskbar: 0x{hr:08X}")
+                return False
+
+        except Exception as e:
+            print(f"❌ Error updating button icon: {e}")
+            return False
 
     def cleanup_resources(self):
-        pass
+        """Clean up loaded custom icons to prevent resource leaks."""
+        if "custom_icons" in self.button_icons:
+            for hicon in self.button_icons["custom_icons"]:
+                try:
+                    ctypes.windll.user32.DestroyIcon(hicon)
+                except:
+                    pass  # Ignore errors during cleanup
+            self.button_icons["custom_icons"].clear()
 
     def __del__(self):
-        pass
+        """Destructor to ensure resource cleanup."""
+        try:
+            self.cleanup_resources()
+        except:
+            pass  # Ignore errors during destruction
 
 
 class BitmapCreator:
@@ -1429,16 +1838,16 @@ class TaskbarManager:
         """Apply basic taskbar features (custom thumbnails only initialized when SetThumbnailClip is called)."""
         self.taskbar_button_created = True
 
-        # Add pending button callbacks if any were requested before taskbar button was ready - BROKEN: Don't apply them
-        # if (
-        #     self._pending_button_callbacks is not None
-        #     or self._pending_custom_icons is not None
-        # ):
-        #     self.AddMediaControlButtons(
-        #         self._pending_button_callbacks, self._pending_custom_icons
-        #     )
-        #     self._pending_button_callbacks = None
-        #     self._pending_custom_icons = None
+        # Add pending button callbacks if any were requested before taskbar button was ready
+        if (
+            self._pending_button_callbacks is not None
+            or self._pending_custom_icons is not None
+        ):
+            self.AddMediaControlButtons(
+                self._pending_button_callbacks, self._pending_custom_icons
+            )
+            self._pending_button_callbacks = None
+            self._pending_custom_icons = None
 
     def _setup_custom_thumbnails(self):
         """Set up the window for custom thumbnails and live previews."""
@@ -1599,19 +2008,184 @@ class TaskbarManager:
 
     # Thumbnail toolbar button methods
     def AddMediaControlButtons(self, callbacks=None, custom_icons=None):
-        pass
+        """
+        Add media control buttons (backward, play/pause, forward, stop) to the taskbar thumbnail.
+
+        Args:
+            callbacks (dict, optional): Dictionary mapping button IDs to callback functions.
+                                      Button IDs are accessible via WindowsConstants:
+                                      - THUMB_BUTTON_BACKWARD
+                                      - THUMB_BUTTON_PLAY_PAUSE
+                                      - THUMB_BUTTON_FORWARD
+                                      - THUMB_BUTTON_STOP
+
+                                      Callback signature: callback(button_id, is_playing=None)
+                                      For play/pause button, is_playing indicates current state.
+
+            custom_icons (dict, optional): Dictionary mapping button names to icon sources.
+                                         Button names: 'backward', 'play', 'pause', 'forward', 'stop'
+                                         Icon sources can be:
+                                         - String: File path to icon (.ico, .png, .bmp, etc.)
+                                         - Tuple: (dll_name, icon_index) for system DLL icons
+                                         - Integer: HICON handle (already loaded icon)
+
+        Returns:
+            bool: True if buttons were added successfully, False otherwise.
+
+        Example:
+            def on_play_pause(button_id, is_playing):
+                print(f"Play/Pause clicked, now playing: {is_playing}")
+
+            def on_next(button_id, is_playing):
+                print("Next track clicked")
+
+            callbacks = {
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE: on_play_pause,
+                WindowsConstants.THUMB_BUTTON_FORWARD: on_next,
+            }
+
+            custom_icons = {
+                'play': 'icons/play.ico',
+                'pause': 'icons/pause.ico',
+                'forward': ('shell32.dll', 16),  # System icon
+                'backward': ('shell32.dll', 15)
+            }
+
+            taskbar_manager.AddMediaControlButtons(callbacks, custom_icons)
+        """
+        if not self.taskbar_button_created:
+            print(
+                "⚠️  Taskbar button not yet created. Buttons will be added when available."
+            )
+            # Store callbacks and icons for later use
+            if callbacks:
+                self._pending_button_callbacks = callbacks
+            if custom_icons:
+                self._pending_custom_icons = custom_icons
+            return False
+
+        # Initialize toolbar manager if not already done
+        if not self.toolbar_manager:
+            self.toolbar_manager = ThumbnailToolbarManager(self)
+
+        success = self.toolbar_manager.create_media_buttons(callbacks, custom_icons)
+        if success:
+            print("✅ Media control buttons added to taskbar thumbnail")
+        else:
+            print("❌ Failed to add media control buttons")
+
+        return success
 
     def UpdatePlayPauseButton(self, is_playing):
-        pass
+        """
+        Update the play/pause button to show play or pause icon.
+
+        Args:
+            is_playing (bool): True to show pause icon, False to show play icon.
+
+        Returns:
+            bool: True if button was updated successfully, False otherwise.
+        """
+        if not self.toolbar_manager:
+            print(
+                "❌ Media control buttons not initialized. Call AddMediaControlButtons() first."
+            )
+            return False
+
+        return self.toolbar_manager.update_play_pause_button(is_playing)
 
     def SetButtonEnabled(self, button_id, enabled=True):
-        pass
+        """
+        Enable or disable a specific thumbnail toolbar button.
+
+        Args:
+            button_id (int): Button ID (use WindowsConstants.THUMB_BUTTON_* constants)
+            enabled (bool): True to enable, False to disable
+
+        Returns:
+            bool: True if button state was updated successfully, False otherwise.
+        """
+        if not self.toolbar_manager:
+            print(
+                "❌ Media control buttons not initialized. Call AddMediaControlButtons() first."
+            )
+            return False
+
+        return self.toolbar_manager.set_button_enabled(button_id, enabled)
 
     def UpdateButtonIcon(self, button_id, icon_source):
-        pass
+        """
+        Update the icon for a specific thumbnail toolbar button.
+
+        Args:
+            button_id (int): Button ID (use WindowsConstants.THUMB_BUTTON_* constants)
+            icon_source: Icon source, can be:
+                        - String: File path to icon file (.ico, .png, .bmp, etc.)
+                        - Tuple: (dll_name, icon_index) for system DLL icons
+                        - Integer: HICON handle (already loaded icon)
+
+        Returns:
+            bool: True if icon was updated successfully, False otherwise.
+
+        Example:
+            # Update play button with custom icon file
+            taskbar_manager.UpdateButtonIcon(WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, 'icons/play.ico')
+
+            # Update forward button with system icon
+            taskbar_manager.UpdateButtonIcon(WindowsConstants.THUMB_BUTTON_FORWARD, ('shell32.dll', 16))
+        """
+        if not self.toolbar_manager:
+            print(
+                "❌ Media control buttons not initialized. Call AddMediaControlButtons() first."
+            )
+            return False
+
+        return self.toolbar_manager.update_button_icon(button_id, icon_source)
 
     def GetAvailableSystemIcons(self):
-        pass
+        """
+        Get a dictionary of commonly used system icons that can be used for buttons.
+
+        Returns:
+            dict: Dictionary mapping icon names to (dll_name, icon_index) tuples
+        """
+        return {
+            # Media control icons
+            "media_play": ("imageres.dll", 261),
+            "media_pause": ("imageres.dll", 262),
+            "media_stop": ("imageres.dll", 264),
+            "media_previous": ("imageres.dll", 260),
+            "media_next": ("imageres.dll", 263),
+            "media_record": ("imageres.dll", 265),
+            # Navigation icons
+            "arrow_left": ("shell32.dll", 15),
+            "arrow_right": ("shell32.dll", 16),
+            "arrow_up": ("shell32.dll", 17),
+            "arrow_down": ("shell32.dll", 18),
+            # Common actions
+            "refresh": ("shell32.dll", 238),
+            "settings": ("shell32.dll", 316),
+            "home": ("shell32.dll", 235),
+            "search": ("shell32.dll", 23),
+            "folder": ("shell32.dll", 3),
+            "document": ("shell32.dll", 1),
+            # Status icons
+            "warning": ("user32.dll", 32515),
+            "error": ("user32.dll", 32513),
+            "info": ("user32.dll", 32516),
+            "question": ("user32.dll", 32514),
+        }
 
     def GetButtonConstants(self):
-        pass
+        """
+        Get a dictionary of button ID constants for use with callbacks.
+
+        Returns:
+            dict: Dictionary mapping button names to their ID constants.
+        """
+        return {
+            "BACKWARD": WindowsConstants.THUMB_BUTTON_BACKWARD,
+            "PLAY_PAUSE": WindowsConstants.THUMB_BUTTON_PLAY_PAUSE,
+            "FORWARD": WindowsConstants.THUMB_BUTTON_FORWARD,
+            "STOP": WindowsConstants.THUMB_BUTTON_STOP,
+        }
