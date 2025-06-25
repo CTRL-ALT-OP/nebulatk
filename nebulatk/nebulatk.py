@@ -873,6 +873,16 @@ def __main__():
 
     window.taskbar_manager.SetProgress(20)
     window.taskbar_manager.SetThumbnailNotification("info")
+    # Add buttons to taskbar
+    window.taskbar_manager.AddMediaControlButtons({})
+
+    # Update play/pause state
+    window.taskbar_manager.UpdatePlayPauseButton(True)  # Show pause icon
+
+    # Disable next button if at end of playlist
+    window.taskbar_manager.SetButtonEnabled(
+        taskbar_manager.WindowsConstants.THUMB_BUTTON_FORWARD, False
+    )
 
 
 if __name__ == "__main__":

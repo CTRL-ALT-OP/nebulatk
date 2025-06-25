@@ -17,6 +17,7 @@ class WindowsConstants:
     WM_ACTIVATEAPP = 0x001C
     WM_SETFOCUS = 0x0007
     WM_KILLFOCUS = 0x0008
+    WM_COMMAND = 0x0111
 
     # DWM attributes
     DWMWA_FORCE_ICONIC_REPRESENTATION = 7
@@ -51,6 +52,26 @@ class WindowsConstants:
     # GUIDs
     CLSID_TASKBAR_LIST = GUID("{56FDF344-FD6D-11D0-958A-006097C9A090}")
     IID_ITASKBAR_LIST3 = GUID("{EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF}")
+
+    # Thumbnail toolbar button constants
+    THBN_CLICKED = 0x1800
+
+    # Thumbnail button flags
+    THBF_ENABLED = 0x00000000
+    THBF_DISABLED = 0x00000001
+    THBF_DISMISSONCLICK = 0x00000002
+    THBF_NOBACKGROUND = 0x00000004
+    THBF_HIDDEN = 0x00000008
+    THBF_NONINTERACTIVE = 0x00000010
+
+    # Maximum number of buttons
+    THBN_MAX_BUTTONS = 7
+
+    # Media control button IDs
+    THUMB_BUTTON_BACKWARD = 1001
+    THUMB_BUTTON_PLAY_PAUSE = 1002
+    THUMB_BUTTON_FORWARD = 1003
+    THUMB_BUTTON_STOP = 1004
 
 
 class WindowsAPISetup:
@@ -429,6 +450,82 @@ class ValidationHelper:
         y = min(y, WindowsConstants.MAX_COORD)
 
         return x, y
+
+
+class THUMBBUTTON(ctypes.Structure):
+    """Structure for defining thumbnail toolbar buttons."""
+
+    _fields_ = [
+        ("dwMask", ctypes.c_uint),
+        ("iId", ctypes.c_uint),
+        ("iBitmap", ctypes.c_uint),
+        ("hIcon", wintypes.HICON),
+        ("szTip", ctypes.c_wchar * 260),
+        ("dwFlags", ctypes.c_uint),
+    ]
+
+    # Mask values
+    THB_BITMAP = 0x1
+    THB_ICON = 0x2
+    THB_TOOLTIP = 0x4
+    THB_FLAGS = 0x8
+
+
+class ThumbnailToolbarManager:
+    """Helper class for managing thumbnail toolbar buttons."""
+
+    def __init__(self, taskbar_manager):
+        self.taskbar_manager = taskbar_manager
+        self.buttons = []
+        self.button_callbacks = {}
+        self.is_playing = False  # Track play/pause state
+        self.button_icons = {}  # Store loaded icons for cleanup
+
+    def create_media_buttons(self, callbacks=None, custom_icons=None):
+        """
+        Create standard media control buttons (backward, play/pause, forward, stop).
+
+        Args:
+            callbacks (dict, optional): Dictionary mapping button IDs to callback functions
+            custom_icons (dict, optional): Dictionary mapping button names to icon sources.
+        """
+        pass
+
+    def _load_button_icons(self, custom_icons):
+        pass
+
+    def _load_custom_icon(self, icon_source, icon_name):
+        return None
+
+    def _load_icon_from_file(self, file_path):
+        return None
+
+    def _bitmap_to_icon(self, hbitmap):
+        return None
+
+    def _load_system_icon(self, dll_name, icon_index):
+        return None
+
+    def _add_buttons_to_taskbar(self):
+        pass
+
+    def update_play_pause_button(self, is_playing=None):
+        pass
+
+    def set_button_enabled(self, button_id, enabled=True):
+        pass
+
+    def handle_button_click(self, button_id):
+        pass
+
+    def update_button_icon(self, button_id, icon_source):
+        pass
+
+    def cleanup_resources(self):
+        pass
+
+    def __del__(self):
+        pass
 
 
 class BitmapCreator:
@@ -967,6 +1064,11 @@ class TaskbarManager:
         self.thumbnail_pending_timer = None
         self.live_preview_pending_timer = None
 
+        # Thumbnail toolbar manager
+        self.toolbar_manager = None
+        self._pending_button_callbacks = None
+        self._pending_custom_icons = None
+
         # Initialize
         self._initialize()
 
@@ -1274,6 +1376,17 @@ class TaskbarManager:
 
         if msg == TaskbarButtonCreated:
             self._on_taskbar_button_created()
+        elif msg == WindowsConstants.WM_COMMAND:
+            # Handle thumbnail toolbar button clicks
+            button_id = wparam & 0xFFFF
+            if self.toolbar_manager and button_id in [
+                WindowsConstants.THUMB_BUTTON_BACKWARD,
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE,
+                WindowsConstants.THUMB_BUTTON_FORWARD,
+                WindowsConstants.THUMB_BUTTON_STOP,
+            ]:
+                self.toolbar_manager.handle_button_click(button_id)
+                return 0
         elif (
             msg == WindowsConstants.WM_DWMSENDICONICTHUMBNAIL
             and self.custom_thumbnails_initialized
@@ -1315,6 +1428,17 @@ class TaskbarManager:
     def _apply_taskbar_features(self):
         """Apply basic taskbar features (custom thumbnails only initialized when SetThumbnailClip is called)."""
         self.taskbar_button_created = True
+
+        # Add pending button callbacks if any were requested before taskbar button was ready - BROKEN: Don't apply them
+        # if (
+        #     self._pending_button_callbacks is not None
+        #     or self._pending_custom_icons is not None
+        # ):
+        #     self.AddMediaControlButtons(
+        #         self._pending_button_callbacks, self._pending_custom_icons
+        #     )
+        #     self._pending_button_callbacks = None
+        #     self._pending_custom_icons = None
 
     def _setup_custom_thumbnails(self):
         """Set up the window for custom thumbnails and live previews."""
@@ -1472,3 +1596,22 @@ class TaskbarManager:
 
         if hasattr(self, "_invalidate_pending"):
             delattr(self, "_invalidate_pending")
+
+    # Thumbnail toolbar button methods
+    def AddMediaControlButtons(self, callbacks=None, custom_icons=None):
+        pass
+
+    def UpdatePlayPauseButton(self, is_playing):
+        pass
+
+    def SetButtonEnabled(self, button_id, enabled=True):
+        pass
+
+    def UpdateButtonIcon(self, button_id, icon_source):
+        pass
+
+    def GetAvailableSystemIcons(self):
+        pass
+
+    def GetButtonConstants(self):
+        pass

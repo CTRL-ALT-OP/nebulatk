@@ -74,6 +74,14 @@ class MockCTypes:
         self.c_int32 = int
         self.c_uint16 = int
         self.c_char_p = MagicMock
+
+        # Create a mock class that supports array syntax (c_type * size)
+        class MockCType:
+            def __mul__(self, other):
+                return MagicMock()  # Return a mock array type
+
+        self.c_wchar = MockCType()  # Fixed c_wchar to support array syntax
+        self.c_bool = bool  # Added missing c_bool
         self.byref = MagicMock()
         # This will be set up later with the interface mock
         self.cast = None
@@ -82,6 +90,7 @@ class MockCTypes:
         self.WINFUNCTYPE = MagicMock()
         self.HRESULT = MagicMock()
         self.sizeof = MagicMock(return_value=8)
+        self.create_string_buffer = MagicMock()  # Added missing create_string_buffer
 
         # Set up OleDLL mock for COM interface creation
         mock_ole32 = MagicMock()
@@ -116,6 +125,18 @@ def mock_modules():
     mock_ctypes = MockCTypes()
     mock_ctypes.wintypes.HWND = int
     mock_ctypes.wintypes.POINT = MagicMock
+    mock_ctypes.wintypes.HICON = int  # Added missing HICON
+    mock_ctypes.wintypes.HBITMAP = int  # Added missing HBITMAP
+    mock_ctypes.wintypes.HDC = int  # Added missing HDC
+    mock_ctypes.wintypes.HGDIOBJ = int  # Added missing HGDIOBJ
+    mock_ctypes.wintypes.BOOL = bool  # Added missing BOOL
+    mock_ctypes.wintypes.DWORD = int  # Added missing DWORD
+    mock_ctypes.wintypes.UINT = int  # Added missing UINT
+    mock_ctypes.wintypes.WPARAM = int  # Added missing WPARAM
+    mock_ctypes.wintypes.LPARAM = int  # Added missing LPARAM
+    mock_ctypes.wintypes.LPCWSTR = MagicMock  # Added missing LPCWSTR
+    mock_ctypes.wintypes.LPWSTR = MagicMock  # Added missing LPWSTR
+    mock_ctypes.wintypes.HANDLE = int  # Added missing HANDLE
 
     # Create a proper mock RECT class that has attributes
     class MockRECT:
@@ -138,7 +159,7 @@ def mock_modules():
             "ctypes.wintypes": mock_ctypes.wintypes,
         },
     ):
-        yield
+        yield mock_ctypes
 
 
 @pytest.fixture
@@ -1693,3 +1714,1036 @@ class TestTaskbarManagerIntegration:
 
                         # Bitmap should be cleaned up
                         mock_delete.assert_called_once_with(5001)
+
+
+class TestTaskbarManagerMediaControls:
+    """Test TaskbarManager media control button functionality."""
+
+    def test_add_media_control_buttons_default(self, mock_modules, mock_window):
+        """Test adding media control buttons with default icons."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        # Mock the toolbar manager creation
+        with patch("taskbar_manager.ThumbnailToolbarManager") as mock_toolbar_class:
+            mock_toolbar = MagicMock()
+            mock_toolbar.create_media_buttons.return_value = True
+            mock_toolbar_class.return_value = mock_toolbar
+
+            callbacks = {WindowsConstants.THUMB_BUTTON_PLAY_PAUSE: lambda x, y: None}
+
+            result = manager.AddMediaControlButtons(callbacks)
+
+            assert result is True
+            assert manager.toolbar_manager is mock_toolbar
+            mock_toolbar.create_media_buttons.assert_called_once_with(callbacks, None)
+
+    def test_add_media_control_buttons_with_custom_icons(
+        self, mock_modules, mock_window
+    ):
+        """Test adding media control buttons with custom icons."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        with patch("taskbar_manager.ThumbnailToolbarManager") as mock_toolbar_class:
+            mock_toolbar = MagicMock()
+            mock_toolbar.create_media_buttons.return_value = True
+            mock_toolbar_class.return_value = mock_toolbar
+
+            callbacks = {WindowsConstants.THUMB_BUTTON_PLAY_PAUSE: lambda x, y: None}
+            custom_icons = {
+                "play": "icons/play.ico",
+                "pause": ("shell32.dll", 16),
+                "forward": 12345,  # HICON handle
+            }
+
+            result = manager.AddMediaControlButtons(callbacks, custom_icons)
+
+            assert result is True
+            mock_toolbar.create_media_buttons.assert_called_once_with(
+                callbacks, custom_icons
+            )
+
+    def test_add_media_control_buttons_before_taskbar_ready(
+        self, mock_modules, mock_window
+    ):
+        """Test adding media control buttons before taskbar button is created."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = False
+
+        callbacks = {WindowsConstants.THUMB_BUTTON_PLAY_PAUSE: lambda x, y: None}
+        custom_icons = {"play": "icons/play.ico"}
+
+        result = manager.AddMediaControlButtons(callbacks, custom_icons)
+
+        assert result is False
+        assert manager._pending_button_callbacks is callbacks
+        assert manager._pending_custom_icons is custom_icons
+
+    def test_add_media_control_buttons_creation_failure(
+        self, mock_modules, mock_window
+    ):
+        """Test handling of media control button creation failure."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = True
+        manager.hwnd = 12345
+
+        with patch("taskbar_manager.ThumbnailToolbarManager") as mock_toolbar_class:
+            mock_toolbar = MagicMock()
+            mock_toolbar.create_media_buttons.return_value = False
+            mock_toolbar_class.return_value = mock_toolbar
+
+            result = manager.AddMediaControlButtons()
+
+            assert result is False
+
+    def test_update_play_pause_button(self, mock_modules, mock_window):
+        """Test updating play/pause button state."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        mock_toolbar = MagicMock()
+        mock_toolbar.update_play_pause_button.return_value = True
+        manager.toolbar_manager = mock_toolbar
+
+        result = manager.UpdatePlayPauseButton(True)
+
+        assert result is True
+        mock_toolbar.update_play_pause_button.assert_called_once_with(True)
+
+    def test_update_play_pause_button_not_initialized(self, mock_modules, mock_window):
+        """Test updating play/pause button when not initialized."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.toolbar_manager = None
+
+        result = manager.UpdatePlayPauseButton(True)
+
+        assert result is False
+
+    def test_set_button_enabled(self, mock_modules, mock_window):
+        """Test enabling/disabling buttons."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        mock_toolbar = MagicMock()
+        mock_toolbar.set_button_enabled.return_value = True
+        manager.toolbar_manager = mock_toolbar
+
+        result = manager.SetButtonEnabled(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, False
+        )
+
+        assert result is True
+        mock_toolbar.set_button_enabled.assert_called_once_with(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, False
+        )
+
+    def test_set_button_enabled_not_initialized(self, mock_modules, mock_window):
+        """Test setting button enabled state when not initialized."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.toolbar_manager = None
+
+        result = manager.SetButtonEnabled(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, False
+        )
+
+        assert result is False
+
+    def test_update_button_icon(self, mock_modules, mock_window):
+        """Test updating button icon."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        mock_toolbar = MagicMock()
+        mock_toolbar.update_button_icon.return_value = True
+        manager.toolbar_manager = mock_toolbar
+
+        icon_source = "icons/new_play.ico"
+        result = manager.UpdateButtonIcon(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, icon_source
+        )
+
+        assert result is True
+        mock_toolbar.update_button_icon.assert_called_once_with(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, icon_source
+        )
+
+    def test_update_button_icon_not_initialized(self, mock_modules, mock_window):
+        """Test updating button icon when not initialized."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.toolbar_manager = None
+
+        result = manager.UpdateButtonIcon(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, "icon.ico"
+        )
+
+        assert result is False
+
+    def test_get_available_system_icons(self, mock_modules, mock_window):
+        """Test getting available system icons."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        icons = manager.GetAvailableSystemIcons()
+
+        assert isinstance(icons, dict)
+        assert len(icons) > 0
+
+        # Check that some expected icons are present
+        expected_icons = [
+            "media_play",
+            "media_pause",
+            "media_stop",
+            "arrow_left",
+            "arrow_right",
+        ]
+        for icon_name in expected_icons:
+            assert icon_name in icons
+            assert isinstance(icons[icon_name], tuple)
+            assert len(icons[icon_name]) == 2  # (dll_name, icon_index)
+
+    def test_get_button_constants(self, mock_modules, mock_window):
+        """Test getting button constants."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        constants = manager.GetButtonConstants()
+
+        assert isinstance(constants, dict)
+        assert constants["BACKWARD"] == WindowsConstants.THUMB_BUTTON_BACKWARD
+        assert constants["PLAY_PAUSE"] == WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        assert constants["FORWARD"] == WindowsConstants.THUMB_BUTTON_FORWARD
+        assert constants["STOP"] == WindowsConstants.THUMB_BUTTON_STOP
+
+    def test_pending_buttons_applied_on_taskbar_creation(
+        self, mock_modules, mock_window
+    ):
+        """Test that pending button callbacks are applied when taskbar is created."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.taskbar_button_created = False
+
+        # Set up pending callbacks and icons
+        callbacks = {WindowsConstants.THUMB_BUTTON_PLAY_PAUSE: lambda x, y: None}
+        custom_icons = {"play": "icon.ico"}
+
+        manager.AddMediaControlButtons(callbacks, custom_icons)
+        assert manager._pending_button_callbacks is callbacks
+        assert manager._pending_custom_icons is custom_icons
+
+        # Mock toolbar manager
+        with patch("taskbar_manager.ThumbnailToolbarManager") as mock_toolbar_class:
+            mock_toolbar = MagicMock()
+            mock_toolbar.create_media_buttons.return_value = True
+            mock_toolbar_class.return_value = mock_toolbar
+
+            # Simulate taskbar button creation
+            manager._apply_taskbar_features()
+
+            assert manager._pending_button_callbacks is None
+            assert manager._pending_custom_icons is None
+            mock_toolbar.create_media_buttons.assert_called_once_with(
+                callbacks, custom_icons
+            )
+
+
+class TestThumbnailToolbarManager:
+    """Test ThumbnailToolbarManager functionality."""
+
+    def test_thumbnail_toolbar_manager_init(self, mock_modules, mock_window):
+        """Test ThumbnailToolbarManager initialization."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        assert toolbar_manager.taskbar_manager is taskbar_manager
+        assert toolbar_manager.buttons == []
+        assert toolbar_manager.button_callbacks == {}
+        assert toolbar_manager.is_playing is False
+        assert toolbar_manager.button_icons == {}
+
+    def test_load_button_icons_default(self, mock_modules, mock_window):
+        """Test loading default system icons."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        with patch.object(toolbar_manager, "_load_system_icon") as mock_load_system:
+            mock_load_system.return_value = 12345  # Mock HICON
+
+            icons = toolbar_manager._load_button_icons({})
+
+            # Should have loaded all default icons
+            assert len(icons) == 5  # backward, play, pause, forward, stop
+            assert all(icons[name] == 12345 for name in icons)
+            assert mock_load_system.call_count == 5
+
+    def test_load_button_icons_custom(self, mock_modules, mock_window):
+        """Test loading custom icons with fallback to defaults."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        custom_icons = {"play": "custom_play.ico", "pause": ("shell32.dll", 16)}
+
+        with (
+            patch.object(toolbar_manager, "_load_custom_icon") as mock_load_custom,
+            patch.object(toolbar_manager, "_load_system_icon") as mock_load_system,
+        ):
+
+            # Custom icon loading succeeds for play, fails for pause
+            mock_load_custom.side_effect = [54321, None]  # Success, then failure
+            mock_load_system.return_value = 12345  # Default system icon
+
+            icons = toolbar_manager._load_button_icons(custom_icons)
+
+            # Play should use custom icon, others should use system default
+            assert icons["play"] == 54321
+            assert icons["pause"] == 12345  # Fallback to system
+            assert icons["backward"] == 12345  # System default
+            assert icons["forward"] == 12345  # System default
+            assert icons["stop"] == 12345  # System default
+
+    def test_load_custom_icon_file_path(self, mock_modules, mock_window):
+        """Test loading icon from file path."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        with patch.object(toolbar_manager, "_load_icon_from_file") as mock_load_file:
+            mock_load_file.return_value = 98765
+
+            result = toolbar_manager._load_custom_icon("icon.ico", "test")
+
+            assert result == 98765
+            mock_load_file.assert_called_once_with("icon.ico")
+
+    def test_load_custom_icon_system_dll(self, mock_modules, mock_window):
+        """Test loading icon from system DLL."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        with patch.object(toolbar_manager, "_load_system_icon") as mock_load_system:
+            mock_load_system.return_value = 11111
+
+            result = toolbar_manager._load_custom_icon(("shell32.dll", 16), "test")
+
+            assert result == 11111
+            mock_load_system.assert_called_once_with("shell32.dll", 16)
+
+    def test_load_custom_icon_hicon_handle(self, mock_modules, mock_window):
+        """Test loading icon from HICON handle."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        result = toolbar_manager._load_custom_icon(22222, "test")
+
+        assert result == 22222
+
+    def test_load_custom_icon_invalid_source(self, mock_modules, mock_window):
+        """Test loading icon with invalid source type."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        result = toolbar_manager._load_custom_icon(["invalid", "type"], "test")
+
+        assert result is None
+
+    @patch("os.path.exists", return_value=True)
+    def test_load_icon_from_file_ico(self, mock_exists, mock_modules, mock_window):
+        """Test loading .ico file."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.LoadImageW.return_value = 33333
+        mock_ctypes.windll.user32 = mock_user32
+
+        result = toolbar_manager._load_icon_from_file("test.ico")
+
+        assert result == 33333
+        mock_user32.LoadImageW.assert_called_once()
+
+    @patch("os.path.exists", return_value=True)
+    def test_load_icon_from_file_png(self, mock_exists, mock_modules, mock_window):
+        """Test loading .png file (converted to icon)."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.LoadImageW.return_value = 44444  # Bitmap handle
+        mock_ctypes.windll.user32 = mock_user32
+
+        mock_gdi32 = MagicMock()
+        mock_ctypes.windll.gdi32 = mock_gdi32
+
+        with patch.object(toolbar_manager, "_bitmap_to_icon") as mock_bitmap_to_icon:
+            mock_bitmap_to_icon.return_value = 55555
+
+            result = toolbar_manager._load_icon_from_file("test.png")
+
+            assert result == 55555
+            mock_bitmap_to_icon.assert_called_once_with(44444)
+            mock_gdi32.DeleteObject.assert_called_once_with(44444)
+
+    @patch("os.path.exists", return_value=False)
+    def test_load_icon_from_file_not_found(
+        self, mock_exists, mock_modules, mock_window
+    ):
+        """Test loading icon from non-existent file."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        result = toolbar_manager._load_icon_from_file("nonexistent.ico")
+
+        assert result is None
+
+    def test_update_play_pause_button_to_playing(self, mock_modules, mock_window):
+        """Test updating play/pause button to playing state."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        mock_button.hIcon = 11111
+        toolbar_manager.buttons = [mock_button]
+        toolbar_manager._icons = {"play": 22222, "pause": 33333}
+
+        result = toolbar_manager.update_play_pause_button(True)
+
+        assert result is True
+        assert toolbar_manager.is_playing is True
+        assert mock_button.hIcon == 33333  # Pause icon
+        assert mock_button.szTip == "Pause"
+
+    def test_update_play_pause_button_to_paused(self, mock_modules, mock_window):
+        """Test updating play/pause button to paused state."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+        toolbar_manager.is_playing = True  # Start in playing state
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        mock_button.hIcon = 33333
+        toolbar_manager.buttons = [mock_button]
+        toolbar_manager._icons = {"play": 22222, "pause": 33333}
+
+        result = toolbar_manager.update_play_pause_button(False)
+
+        assert result is True
+        assert toolbar_manager.is_playing is False
+        assert mock_button.hIcon == 22222  # Play icon
+        assert mock_button.szTip == "Play"
+
+    def test_set_button_enabled_success(self, mock_modules, mock_window):
+        """Test enabling/disabling button successfully."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_FORWARD
+        toolbar_manager.buttons = [mock_button]
+
+        result = toolbar_manager.set_button_enabled(
+            WindowsConstants.THUMB_BUTTON_FORWARD, False
+        )
+
+        assert result is True
+        assert mock_button.dwFlags == WindowsConstants.THBF_DISABLED
+
+    def test_set_button_enabled_not_found(self, mock_modules, mock_window):
+        """Test enabling/disabling non-existent button."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+        toolbar_manager.buttons = []
+
+        result = toolbar_manager.set_button_enabled(
+            WindowsConstants.THUMB_BUTTON_FORWARD, False
+        )
+
+        assert result is False
+
+    def test_update_button_icon_success(self, mock_modules, mock_window):
+        """Test updating button icon successfully."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        mock_button.hIcon = 11111  # Old icon
+        toolbar_manager.buttons = [mock_button]
+
+        with patch.object(toolbar_manager, "_load_custom_icon") as mock_load:
+            mock_load.return_value = 99999  # New icon
+
+            result = toolbar_manager.update_button_icon(
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, "new_icon.ico"
+            )
+
+            assert result is True
+            assert mock_button.hIcon == 99999
+
+    def test_update_button_icon_load_failure(self, mock_modules, mock_window):
+        """Test updating button icon when loading fails."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        with patch.object(toolbar_manager, "_load_custom_icon") as mock_load:
+            mock_load.return_value = None  # Loading failed
+
+            result = toolbar_manager.update_button_icon(
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, "bad_icon.ico"
+            )
+
+            assert result is False
+
+    def test_cleanup_resources(self, mock_modules, mock_window):
+        """Test cleanup of custom icon resources."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up some custom icons
+        toolbar_manager.button_icons["custom_icons"] = [11111, 22222, 33333]
+
+        mock_user32 = MagicMock()
+        mock_modules.windll.user32 = mock_user32
+
+        toolbar_manager.cleanup_resources()
+
+        # Should have destroyed all custom icons
+        assert mock_user32.DestroyIcon.call_count == 3
+        assert len(toolbar_manager.button_icons["custom_icons"]) == 0
+
+    def test_handle_button_click_with_callback(self, mock_modules, mock_window):
+        """Test handling button click with user callback."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        callback_called = False
+
+        def test_callback(button_id, is_playing):
+            nonlocal callback_called
+            callback_called = True
+            assert button_id == WindowsConstants.THUMB_BUTTON_FORWARD
+            assert is_playing is None
+
+        toolbar_manager.button_callbacks = {
+            WindowsConstants.THUMB_BUTTON_FORWARD: test_callback
+        }
+
+        result = toolbar_manager.handle_button_click(
+            WindowsConstants.THUMB_BUTTON_FORWARD
+        )
+
+        assert result is True
+        assert callback_called is True
+
+    def test_handle_button_click_play_pause_auto_toggle(
+        self, mock_modules, mock_window
+    ):
+        """Test play/pause button auto-toggle functionality."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+        toolbar_manager.is_playing = False
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        toolbar_manager.buttons = [mock_button]
+        toolbar_manager._icons = {"play": 11111, "pause": 22222}
+
+        with patch.object(toolbar_manager, "update_play_pause_button") as mock_update:
+            mock_update.return_value = True
+
+            result = toolbar_manager.handle_button_click(
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+            )
+
+            assert result is True
+            mock_update.assert_called_once()
+
+
+class TestTaskbarManagerWindowMessageHandling:
+    """Test TaskbarManager window message handling for media controls."""
+
+    def test_wm_command_button_click_handling(self, mock_modules, mock_window):
+        """Test handling WM_COMMAND messages for button clicks."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.hwnd = 12345
+
+        # Set up toolbar manager with mock
+        mock_toolbar = MagicMock()
+        mock_toolbar.handle_button_click.return_value = True
+        manager.toolbar_manager = mock_toolbar
+
+        # Mock window procedure setup
+        from taskbar_manager import WindowsAPISetup
+
+        LRESULT, LONG_PTR, WNDPROCTYPE = WindowsAPISetup.setup_window_proc_types()
+
+        # Simulate WM_COMMAND message with button ID
+        wparam = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE  # Button ID in lower word
+        result = manager._handle_window_message(
+            12345,
+            WindowsConstants.WM_COMMAND,
+            wparam,
+            0,
+            None,  # TaskbarButtonCreated
+            LONG_PTR,
+        )
+
+        assert result == 0  # Message handled
+        mock_toolbar.handle_button_click.assert_called_once_with(
+            WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        )
+
+    def test_wm_command_non_button_id_ignored(self, mock_modules, mock_window):
+        """Test that WM_COMMAND messages with non-button IDs are ignored."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.hwnd = 12345
+        manager.old_wndproc = 99999  # Mock old window procedure
+
+        mock_toolbar = MagicMock()
+        manager.toolbar_manager = mock_toolbar
+
+        # Mock user32.CallWindowProcW
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.CallWindowProcW.return_value = 123
+        mock_ctypes.windll.user32 = mock_user32
+
+        from taskbar_manager import WindowsAPISetup
+
+        LRESULT, LONG_PTR, WNDPROCTYPE = WindowsAPISetup.setup_window_proc_types()
+
+        # Simulate WM_COMMAND with non-button ID
+        wparam = 9999  # Not a media control button ID
+        result = manager._handle_window_message(
+            12345, WindowsConstants.WM_COMMAND, wparam, 0, None, LONG_PTR
+        )
+
+        # Should call original window procedure
+        assert result == 123
+        mock_user32.CallWindowProcW.assert_called_once()
+        mock_toolbar.handle_button_click.assert_not_called()
+
+    def test_wm_command_no_toolbar_manager(self, mock_modules, mock_window):
+        """Test WM_COMMAND handling when toolbar manager is not initialized."""
+        from taskbar_manager import TaskbarManager, WindowsConstants
+
+        manager = TaskbarManager(mock_window)
+        manager.hwnd = 12345
+        manager.old_wndproc = 99999
+        manager.toolbar_manager = None
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.CallWindowProcW.return_value = 456
+        mock_ctypes.windll.user32 = mock_user32
+
+        from taskbar_manager import WindowsAPISetup
+
+        LRESULT, LONG_PTR, WNDPROCTYPE = WindowsAPISetup.setup_window_proc_types()
+
+        wparam = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        result = manager._handle_window_message(
+            12345, WindowsConstants.WM_COMMAND, wparam, 0, None, LONG_PTR
+        )
+
+        # Should call original window procedure since no toolbar manager
+        assert result == 456
+        mock_user32.CallWindowProcW.assert_called_once()
+
+
+class TestThumbnailToolbarManagerIconConversion:
+    """Test icon conversion and loading edge cases."""
+
+    def test_bitmap_to_icon_conversion(self, mock_modules, mock_window):
+        """Test bitmap to icon conversion."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_gdi32 = MagicMock()
+
+        # Mock successful conversion
+        mock_user32.GetDC.return_value = 111
+        mock_user32.ReleaseDC.return_value = 1
+        mock_user32.CreateIconIndirect.return_value = 77777
+        mock_gdi32.CreateCompatibleBitmap.return_value = 222
+        mock_gdi32.GetObjectW.return_value = 24
+        mock_gdi32.DeleteObject.return_value = True
+
+        mock_ctypes.windll.user32 = mock_user32
+        mock_ctypes.windll.gdi32 = mock_gdi32
+
+        # Mock ctypes functions
+        mock_ctypes.create_string_buffer.return_value = b"\x00" * 24
+
+        result = toolbar_manager._bitmap_to_icon(12345)
+
+        assert result == 77777
+        mock_user32.CreateIconIndirect.assert_called_once()
+        mock_gdi32.DeleteObject.assert_called_once_with(222)  # Mask bitmap cleanup
+
+    def test_bitmap_to_icon_conversion_failure(self, mock_modules, mock_window):
+        """Test bitmap to icon conversion failure."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_gdi32 = MagicMock()
+
+        # Mock failed mask bitmap creation
+        mock_user32.GetDC.return_value = 111
+        mock_gdi32.CreateCompatibleBitmap.return_value = None  # Failed
+
+        mock_ctypes.windll.user32 = mock_user32
+        mock_ctypes.windll.gdi32 = mock_gdi32
+
+        result = toolbar_manager._bitmap_to_icon(12345)
+
+        assert result is None
+
+    def test_load_system_icon_extraction_failure(self, mock_modules, mock_window):
+        """Test system icon loading failure."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_shell32 = MagicMock()
+        mock_shell32.ExtractIconW.return_value = 1  # Indicates failure
+        mock_ctypes.windll.shell32 = mock_shell32
+
+        result = toolbar_manager._load_system_icon("shell32.dll", 999)
+
+        assert result is None
+
+    def test_load_system_icon_exception(self, mock_modules, mock_window):
+        """Test system icon loading with exception."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_shell32 = MagicMock()
+        mock_shell32.ExtractIconW.side_effect = Exception("Access denied")
+        mock_ctypes.windll.shell32 = mock_shell32
+
+        result = toolbar_manager._load_system_icon("shell32.dll", 16)
+
+        assert result is None
+
+    @patch("os.path.exists", return_value=True)
+    def test_load_icon_from_file_load_failure(
+        self, mock_exists, mock_modules, mock_window
+    ):
+        """Test icon loading failure from existing file."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.LoadImageW.return_value = 0  # Failed to load
+        mock_ctypes.windll.user32 = mock_user32
+
+        result = toolbar_manager._load_icon_from_file("test.ico")
+
+        assert result is None
+
+    def test_load_icon_from_file_png_bitmap_failure(self, mock_modules, mock_window):
+        """Test PNG loading when bitmap loading fails."""
+        from taskbar_manager import ThumbnailToolbarManager, TaskbarManager
+
+        taskbar_manager = TaskbarManager(mock_window)
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_user32.LoadImageW.return_value = 0  # Failed to load bitmap
+        mock_ctypes.windll.user32 = mock_user32
+
+        with patch("os.path.exists", return_value=True):
+            result = toolbar_manager._load_icon_from_file("test.png")
+
+        assert result is None
+
+    def test_update_button_icon_with_cleanup(self, mock_modules, mock_window):
+        """Test updating button icon with proper cleanup of old icon."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up existing custom icons
+        old_icon = 11111
+        toolbar_manager.button_icons["custom_icons"] = [old_icon, 22222]
+
+        # Set up a mock button
+        from taskbar_manager import THUMBBUTTON
+
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        mock_button.hIcon = old_icon
+        toolbar_manager.buttons = [mock_button]
+
+        mock_ctypes = mock_modules
+        mock_user32 = MagicMock()
+        mock_ctypes.windll.user32 = mock_user32
+
+        with patch.object(toolbar_manager, "_load_custom_icon") as mock_load:
+            mock_load.return_value = 99999  # New icon
+
+            result = toolbar_manager.update_button_icon(
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, "new_icon.ico"
+            )
+
+            assert result is True
+            assert mock_button.hIcon == 99999
+
+            # Old icon should be destroyed and removed from list
+            mock_user32.DestroyIcon.assert_called_once_with(old_icon)
+            assert old_icon not in toolbar_manager.button_icons["custom_icons"]
+            assert 99999 in toolbar_manager.button_icons["custom_icons"]
+
+    def test_update_button_icon_api_failure(self, mock_modules, mock_window):
+        """Test button icon update when API call fails."""
+        from taskbar_manager import (
+            ThumbnailToolbarManager,
+            TaskbarManager,
+            WindowsConstants,
+        )
+
+        taskbar_manager = TaskbarManager(mock_window)
+        taskbar_manager.taskbar_interface = MagicMock()
+        taskbar_manager.vtbl = MagicMock()
+        taskbar_manager.vtbl.ThumbBarUpdateButtons.return_value = 0x80004005  # E_FAIL
+        taskbar_manager.hwnd = 12345
+
+        toolbar_manager = ThumbnailToolbarManager(taskbar_manager)
+
+        # Set up a mock button (don't use spec since THUMBBUTTON is mocked)
+        mock_button = MagicMock()
+        mock_button.iId = WindowsConstants.THUMB_BUTTON_PLAY_PAUSE
+        mock_button.hIcon = 11111
+        toolbar_manager.buttons = [mock_button]
+
+        with patch.object(toolbar_manager, "_load_custom_icon") as mock_load:
+            mock_load.return_value = 99999  # New icon loads successfully
+
+            result = toolbar_manager.update_button_icon(
+                WindowsConstants.THUMB_BUTTON_PLAY_PAUSE, "new_icon.ico"
+            )
+
+            assert result is False
+            # Icon should still be updated in button structure even if API fails
+            assert mock_button.hIcon == 99999
+
+
+class TestTaskbarManagerIntegration:
+    """Integration test for TaskbarManager."""
+
+    def test_complete_thumbnail_workflow(self, mock_modules, mock_window):
+        """Test complete thumbnail workflow with parameter verification."""
+        from taskbar_manager import TaskbarManager
+
+        manager = TaskbarManager(mock_window)
+        manager.hwnd = 99999
+        manager.taskbar_button_created = True
+        manager.bitmap_creator = MagicMock()
+
+        # Set up comprehensive mocking for the entire workflow
+        manager.bitmap_creator.create_thumbnail_bitmap.return_value = (
+            4001  # Mock bitmap handle
+        )
+
+        with patch("ctypes.windll.dwmapi.DwmSetIconicThumbnail") as mock_set_thumbnail:
+            mock_set_thumbnail.return_value = 0
+
+            with patch("ctypes.windll.gdi32.DeleteObject") as mock_delete:
+                mock_delete.return_value = True
+
+                # 1. Set clipping rectangle
+                manager.SetThumbnailClip(50, 75, 400, 300)
+
+                # 2. Simulate thumbnail request
+                manager._delegate_thumbnail_request(99999, 250, 200)
+
+                # 3. Process the request
+                manager._handle_thumbnail_request_safe(99999, 250, 200)
+
+                # Verify the complete workflow
+                # Clipping should be set correctly
+                assert manager.clip_rect.left == 50
+                assert manager.clip_rect.top == 75
+                assert manager.clip_rect.right == 450  # 50 + 400
+                assert manager.clip_rect.bottom == 375  # 75 + 300
+
+                # Request should be delegated correctly
+                assert manager.thumbnail_width == 250
+                assert manager.thumbnail_height == 200
+
+                # Bitmap should be created with clipped parameters
+                manager.bitmap_creator.create_thumbnail_bitmap.assert_called_once_with(
+                    50,  # clip_rect.left
+                    75,  # clip_rect.top
+                    400,  # width
+                    300,  # height
+                    250,  # thumb_width
+                    200,  # thumb_height
+                    clip_rect=manager.clip_rect,
+                )
+
+                # DWM should be called with correct parameters
+                mock_set_thumbnail.assert_called_once_with(99999, 4001, 0)
+
+                # Bitmap should be cleaned up
+                mock_delete.assert_called_once_with(4001)
