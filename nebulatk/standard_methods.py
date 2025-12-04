@@ -8,7 +8,12 @@ IMAGE_OBJECTS = [
     "hover_object_active",
 ]
 
-BG_OBJECTS = ["bg_object", "bg_object_active"]
+BG_OBJECTS = [
+    "bg_object",
+    "bg_object_active",
+    "bg_object_hover",
+    "bg_object_hover_active",
+]
 
 TEXT_OBJECTS = [
     "text_object",
@@ -219,6 +224,31 @@ def text_flop(_object, val):
                     _object.master.change_state(getattr(_object, obj), state="hidden")
 
 
+def _first_available_bg(_object, candidates):
+    for candidate in candidates:
+        if candidate and check(_object, candidate):
+            return candidate
+    return None
+
+
+def _get_bg_target(_object, hovering=False):
+    return _first_available_bg(
+        _object,
+        [
+            "bg_object_hover_active" if hovering and _object.state else None,
+            "bg_object_hover" if hovering else None,
+            "bg_object_active" if _object.state else None,
+            "bg_object",
+        ],
+    )
+
+
+def _apply_background_state(_object, hovering=None):
+    target = _get_bg_target(_object, _object.hovering if hovering is None else hovering)
+    if target:
+        bg_flop(_object, target)
+
+
 def flop_off(_object):
     """Hides all objects
 
@@ -246,11 +276,7 @@ def flop_on(_object):
         image_flop(_object, "hover_object")
     else:
         image_flop(_object, "image_object")
-    if _object.bg_object_active is not None and _object.state:
-        bg_flop(_object, "bg_object_active")
-
-    else:
-        bg_flop(_object, "bg_object")
+    _apply_background_state(_object)
 
     if _object.active_text_object is not None and _object.state:
         text_flop(_object, "active_text_object")
@@ -313,8 +339,7 @@ def hovered_standard(_object):
     """
     if _object.visible:
         image_flop(_object, "hover_object")
-        if _object.bg_object_active is not None:
-            bg_flop(_object, "bg_object_active")
+        _apply_background_state(_object, hovering=True)
         if _object.active_text_object is not None:
             text_flop(_object, "active_text_object")
 
@@ -330,6 +355,7 @@ def hovered_toggle(_object):
             image_flop(_object, "hover_object_active")
         else:
             image_flop(_object, "hover_object")
+        _apply_background_state(_object, hovering=True)
 
 
 def hover_end(_object):
@@ -345,8 +371,7 @@ def hover_end(_object):
             image_flop(_object, "image_object")
             if _object.active_text_object is not None:
                 text_flop(_object, "text_object")
-        if _object.bg_object_active is not None:
-            bg_flop(_object, "bg_object")
+        _apply_background_state(_object, hovering=False)
 
 
 # ------------------------------------------------------------ TOGGLE BEHAVIOUR -------------------------------------------------------------
@@ -363,6 +388,7 @@ def toggle_object_standard(_object):
         image_flop(_object, "hover_object_active")
     else:
         image_flop(_object, "active_object")
+    _apply_background_state(_object)
 
 
 def toggle_object_toggle(_object):
@@ -382,6 +408,7 @@ def toggle_object_toggle(_object):
         image_flop(_object, "hover_object")
     else:
         image_flop(_object, "image_object")
+    _apply_background_state(_object)
     if check(_object, "bg_object_active"):
         if not _object.state:
             bg_flop(_object, "bg_object")
@@ -534,6 +561,38 @@ def place_bulk(_object, x, y):
             state="hidden",
         )
         _object._images_initialized["bg_object_active"] = img
+
+    # Place bg_object_hover
+    if _object.hover_fill is not None or (
+        _object.border is not None and _object.border_width != 0
+    ):
+        _object.bg_object_hover, img = _object.master.create_rectangle(
+            x,
+            y,
+            x + _object.width,
+            y + _object.height,
+            fill=_object.hover_fill,
+            border_width=_object.border_width,
+            outline=_object.border,
+            state="hidden",
+        )
+        _object._images_initialized["bg_object_hover"] = img
+
+    # Place bg_object_hover_active
+    if _object.active_hover_fill is not None or (
+        _object.border is not None and _object.border_width != 0
+    ):
+        _object.bg_object_hover_active, img = _object.master.create_rectangle(
+            x,
+            y,
+            x + _object.width,
+            y + _object.height,
+            fill=_object.active_hover_fill,
+            border_width=_object.border_width,
+            outline=_object.border,
+            state="hidden",
+        )
+        _object._images_initialized["bg_object_hover_active"] = img
 
     # Place images
     for img in ["image", "active_image", "hover_image", "active_hover_image"]:
