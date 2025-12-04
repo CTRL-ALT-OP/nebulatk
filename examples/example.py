@@ -1,7 +1,5 @@
 import nebulatk as ntk
 
-ntk.animation_controller
-
 
 def __main__():
     canvas = ntk.Window()

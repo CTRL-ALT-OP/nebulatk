@@ -529,12 +529,10 @@ class _window_internal(threading.Thread, Component):
         self.root.geometry(f"{self.width}x{self.height}")
 
         # If canvas dimensions should match window, update those too
-        if self.canvas_width == "default":
-            self.canvas_width = self.width
-            self.canvas.configure(width=self.width)
-        if self.canvas_height == "default":
-            self.canvas_height = self.height
-            self.canvas.configure(height=self.height)
+        self.canvas_width = self.width
+        self.canvas.configure(width=self.width)
+        self.canvas_height = self.height
+        self.canvas.configure(height=self.height)
 
         # Update all children to match new dimensions
         self._update_children()
@@ -693,7 +691,12 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    """canvas = Window(title=None, width=800, height=500).place(400, 300)
+    canvas = Window(title=None, width=800, height=500).place(400, 300)
+    print(
+        fonts_manager.loadfont(
+            r"C:\Users\reube\nebulatk\examples\Fonts\HARLOWSI.TTF", private=False
+        )
+    )
     Frame(canvas, image="examples/Images/background.png", width=500, height=500).place(
         0, 0
     )
@@ -745,7 +748,7 @@ def __main__():
         Button(
             canvas,
             text="hi",
-            font=("Helvetica", 50),
+            font=("Harlow Solid Italic", 50),
             fill=[255, 67, 67, 45],
             border_width=2,
         )
@@ -780,15 +783,37 @@ def __main__():
     print(standard_methods.get_rect_points(btn))
     # canvas.destroy()
     window = Window(width=800, height=600)
+
+    def animate_btn():
+        btn6.width = 100
+        btn6.height = 100
+        btn6.place(0, 0)
+        btn6.update()
+        keyframes = [
+            (
+                1.0,
+                {"x": 50, "y": 50},
+                animation_controller.Curves.ease_in_quad,
+            ),  # Move to (50, 50) in 1s
+        ]
+        anim_group = animation_controller.AnimationGroup(
+            btn6, keyframes, steps=60, looping=True
+        )
+        anim_group.start()
+
+    btn6 = Button(window, image=img)
+    btn6.place(0, 0)
     sleep(2)
     window.resize(1000, 800)  # Change size
     window.configure(title="New Title", resizable=(False, False))  # Change properties
     window.hide()  # Hide window
     sleep(4)
-    window.show()"""
-    window = Window(width=800, height=600)
+    window.show()
+    window.taskbar_manager._initialize_custom_thumbnails()
+    animate_btn()
+    # window = Window()
 
-    def trigger_custom_thumbnail():
+    """def trigger_custom_thumbnail():
         window.taskbar_manager.SetThumbnailClip(0, 0, 100, 100)
 
     btn = Button(
@@ -882,7 +907,7 @@ def __main__():
     # Disable next button if at end of playlist
     window.taskbar_manager.SetButtonEnabled(
         taskbar_manager.WindowsConstants.THUMB_BUTTON_FORWARD, False
-    )
+    )"""
 
 
 if __name__ == "__main__":
