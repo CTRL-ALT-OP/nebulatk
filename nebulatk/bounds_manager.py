@@ -61,7 +61,17 @@ def check_hit(_object, x, y):
     """Checks if a point is inside a given object's rectangular bounds approximation"""
     if not _object.initialized:
         return False
-    if not _object.visible:
+
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    state = "normal" if global_visible else "hidden"
+    if not global_visible:
         return False
 
     if not _object.can_focus:

@@ -181,7 +181,16 @@ def image_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
-    visible = "normal" if _object.visible else "hidden"
+
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    visible = "normal" if global_visible else "hidden"
     if check(_object, val):
         for obj in IMAGE_OBJECTS:
             if hasattr(_object, obj):
@@ -198,7 +207,16 @@ def bg_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
-    visible = "normal" if _object.visible else "hidden"
+
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    visible = "normal" if global_visible else "hidden"
     for obj in BG_OBJECTS:
         if check(_object, obj):
             if val == obj:
@@ -214,7 +232,16 @@ def text_flop(_object, val):
         _object (nebulatk.Widget): widget
         val (str): Item to show
     """
-    visible = "normal" if _object.visible else "hidden"
+
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    visible = "normal" if global_visible else "hidden"
     if hasattr(_object, val) and getattr(_object, val) is not None:
         for obj in TEXT_OBJECTS:
             if hasattr(_object, obj):
@@ -518,7 +545,15 @@ def place_bulk(_object, x, y):
     # Only place background rectangles if there == a fill or border
     # Place slider_bg_object
     # colors = _object._colors
-    state = "normal" if _object.visible else "hidden"
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    state = "normal" if global_visible else "hidden"
     """if colors["slider_fill"] is not None or (
         colors["slider_border"] is not None and _object.slider_border_width != 0
     ):
@@ -532,6 +567,8 @@ def place_bulk(_object, x, y):
             outline=_object.slider_border,
             state=state,
         )"""
+
+    object_state = getattr(_object, "state", False)
     # Place bg_object
     if _object.fill is not None or (
         _object.border is not None and _object.border_width != 0
@@ -544,7 +581,7 @@ def place_bulk(_object, x, y):
             fill=_object.fill,
             border_width=_object.border_width,
             outline=_object.border,
-            state=state,
+            state="hidden" if object_state else state,
         )
         _object._images_initialized["bg_object"] = img
 
@@ -558,7 +595,7 @@ def place_bulk(_object, x, y):
             fill=_object.active_fill,
             border_width=_object.border_width,
             outline=_object.border,
-            state="hidden",
+            state=state if object_state else "hidden",
         )
         _object._images_initialized["bg_object_active"] = img
 
@@ -599,7 +636,9 @@ def place_bulk(_object, x, y):
         if check(_object, img):
             state = "hidden"
             img_object = img.split("_")[0] + "_object"
-            if img == "image" and _object.visible:
+            if img == "image" and global_visible and not object_state:
+                state = "normal"
+            elif img == "active_image" and global_visible and object_state:
                 state = "normal"
             if img == "active_hover_image":
                 img_object = "hover_object_active"
@@ -623,7 +662,15 @@ def place_bulk(_object, x, y):
 
 
 def generate_text(_object, x, y):
-    state = "normal" if _object.visible else "hidden"
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+
+    state = "normal" if global_visible else "hidden"
     # Set x offset and anchor based on justify
     if _object.justify == "center":
         local_x = x + (_object.width / 2)

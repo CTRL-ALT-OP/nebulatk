@@ -31,7 +31,7 @@ class Component:
         if children != []:
             for child in children:
                 getattr(child, command)()
-                self._update_children(child.children)
+                self._update_children(child.children, command)
 
     def hide(self):
         self._visible = False
