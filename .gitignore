@@ -1,11 +1,9 @@
 /*
 !/nebulatk
 !/nebulatk/widgets/
-/nebulatk/widgets/__pycache__/
-/nebulatk/__pycache__/
+**/*/__pycache__/
 !/examples
 !/README.md
 !/tests
-/tests/__pycache__
 !requirements.txt
 !.gitignore
