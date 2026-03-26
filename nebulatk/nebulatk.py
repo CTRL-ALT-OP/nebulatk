@@ -20,6 +20,7 @@ try:
         defaults,
         animation_controller,
         taskbar_manager,
+        rendering,
     )
 
     # Import Component and _widget classes from widgets.base
@@ -37,6 +38,7 @@ except ImportError:
     import defaults
     import animation_controller
     import taskbar_manager
+    import rendering
 
     # Import Component and _widget classes from widgets.base
     from widgets.base import Component, _widget, _widget_properties
@@ -88,6 +90,8 @@ class _window_internal(threading.Thread, Component):
         closing_command=None,
         resizable=(True, True),
         override=False,
+        render_mode="image_gl",
+        fps=60,
     ):
         # Initialize the thread
         super().__init__()
@@ -105,11 +109,15 @@ class _window_internal(threading.Thread, Component):
         self.root = None
         self.master = self
         self.canvas = None
+        self.display = None
+        self.renderer = None
         self.down = None
         self.active = None
         self.hovered = None
         self.resizable = resizable
         self.override = override
+        self.render_mode = "image_gl"
+        self.fps = fps
         self.updates_all = (
             False  # Whether updates to members update the widget automatically
         )
@@ -140,6 +148,7 @@ class _window_internal(threading.Thread, Component):
         self.defaults = defaults.new()
 
         self._taskbar_manager = None
+        self._render_batch_depth = 0
 
     @property
     def taskbar_manager(self):
@@ -163,10 +172,7 @@ class _window_internal(threading.Thread, Component):
         x = int(event.x)
         y = int(event.y)
 
-        active_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
+        active_new = self._find_deepest_hit(self.children, x, y)
         """
         # Find the object that was clicked
         # Check if there are any objects initialized at that position
@@ -216,10 +222,7 @@ class _window_internal(threading.Thread, Component):
         if self.down is not None:
             self.down.dragging(x, y)
 
-        hovered_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
+        hovered_new = self._find_deepest_hit(self.children, x, y)
 
         if hovered_new is not self.hovered and hovered_new is not None:
             hovered_new.hovered()
@@ -276,69 +279,46 @@ class _window_internal(threading.Thread, Component):
         if event.keysym in self.active_keys:
             self.active_keys.remove(event.keysym)
 
+    def _find_deepest_hit(self, children, x, y):
+        for child in children:
+            if not bounds_manager.check_hit(child, x, y):
+                continue
+            if type(child).__name__ == "Container":
+                local_x = x - child.x
+                local_y = y - child.y
+                nested = self._find_deepest_hit(child.children, local_x, local_y)
+                if nested is not None:
+                    return nested
+            return child
+        return None
+
     # NOTE: CREATION HANDLERS
     # These are necessary so that threading works properly with tcl
 
     # Wrapper for canvas.create_image method
     def create_image(self, x, y, image, state="normal"):
-        img = self.canvas.create_image(
-            x,
-            y,
-            image=image.tk_image(self),
-            anchor="nw",
-            state=state,
-        )
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(img)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return img, image
+        return self.renderer.root_surface.create_image(x, y, image, state=state)
 
     # Wrapper for canvas.create_rectangle method
     def create_rectangle(
         self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
     ):
-        if x == widt or y == height:
-            return None, None
-        # To support transparency with RGBA, we need to check whether the rectangle includes transparency
-        if fill is not None and fill[7:] != "ff":
-            bg_image = image_manager.create_image(
-                fill, int(widt - x), int(height - y), outline, border_width, self
-            )
-            id, image = self.create_image(x, y, bg_image, state=state)
-            return id, image
-
-            # Otherwise we can continue with creating the rectangle
-
-        rect = self.canvas.create_rectangle(
-            x + border_width / 2,
-            y + border_width / 2,
-            widt - border_width / 2,
-            height - border_width / 2,
-            fill=fill[:7],
-            width=border_width,
-            outline=outline[:7],
+        return self.renderer.root_surface.create_rectangle(
+            x,
+            y,
+            widt,
+            height,
+            fill=fill,
+            border_width=border_width,
+            outline=outline,
             state=state,
         )
-
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(rect)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return (rect, None)
 
     # Wrapper for canvas.create_text method
     def create_text(
         self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
-
-        text_id = self.canvas.create_text(
+        return self.renderer.root_surface.create_text(
             x,
             y,
             text=text,
@@ -349,73 +329,24 @@ class _window_internal(threading.Thread, Component):
             angle=angle,
         )
 
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(text_id)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return (text_id, None)
-
     # Wrapper for canvas.move method
     def move(self, _object, x, y):
-        if _object is not None:
-            self.canvas.move(_object, x, y)
-            for child_canvas in self.children:
-                if (
-                    type(child_canvas).__name__ == "Container"
-                    and child_canvas.initialized
-                ):
-                    if _object in child_canvas.maps:
-                        child_id = child_canvas.maps[_object]
-                        child_canvas.canvas.move(child_id, x, y)
-                    else:
-                        # Only try to replicate if the object exists and is valid
-                        try:
-                            if _object in self.canvas.find_all():
-                                child_canvas.replicate_object(_object)
-                        except (tk.TclError, AttributeError):
-                            # Object is invalid or doesn't exist, skip replication
-                            pass
-
-                        child_canvas.canvas.tag_lower("background_item")
-                        if child_canvas.canvas.find_withtag("fg_item"):
-                            child_canvas.canvas.tag_raise("fg_item")
+        self.renderer.root_surface.move(_object, x, y)
+        self.renderer.dirty = True
 
     def object_place(self, _object, x, y):
-        if _object is not None:
-            coords = self.canvas.coords(_object)
-            self.move(_object, x - coords[0], y - coords[1])
+        self.renderer.root_surface.object_place(_object, x, y)
+        self.renderer.dirty = True
 
     # Wrapper for canvas.delete method
     def delete(self, _object):
-        self.canvas.delete(_object)
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                if _object in child_canvas.maps:
-                    child_id = child_canvas.maps[_object]
-                    child_canvas.canvas.delete(child_id)
+        self.renderer.root_surface.delete(_object)
+        self.renderer.dirty = True
 
     # Wrapper for canvas.change_state method
     def change_state(self, _object, state):
-        self.canvas.itemconfigure(_object, state=state)
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                if _object in child_canvas.maps:
-                    child_id = child_canvas.maps[_object]
-                    child_canvas.canvas.itemconfigure(child_id, state=state)
-                else:
-                    # Only try to replicate if the object exists and is valid
-                    try:
-                        if _object in self.canvas.find_all():
-                            child_canvas.replicate_object(_object)
-                    except (tk.TclError, AttributeError):
-                        # Object is invalid or doesn't exist, skip replication
-                        pass
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
+        self.renderer.root_surface.change_state(_object, state)
+        self.renderer.dirty = True
 
     # NOTE: Other methods
 
@@ -461,14 +392,13 @@ class _window_internal(threading.Thread, Component):
     def run(self):
         # Create window
         self.root = tk.Tk()
-        self.canvas = tk.Canvas(
-            self.root,
-            width=self.canvas_width,
-            height=self.canvas_height,
-            borderwidth=0,
-            highlightthickness=0,
+        self.renderer = rendering.PILImageRenderer(
+            self.canvas_width, self.canvas_height, fps=self.fps
         )
-        self.canvas.pack()
+        self.display = rendering.OpenGLImageDisplay(
+            self.root, self.canvas_width, self.canvas_height
+        )
+        self.canvas = self.display.canvas
 
         # Initialize window
         self.root.geometry(f"{self.width}x{self.height}")
@@ -498,6 +428,7 @@ class _window_internal(threading.Thread, Component):
         self.bind("<Motion>", self.hover)
         self.bind("<Leave>", self.leave_window)
 
+        self._render_tick()
         self.root.mainloop()
 
         # schedule a periodic check of `self.running`,
@@ -530,9 +461,13 @@ class _window_internal(threading.Thread, Component):
 
         # If canvas dimensions should match window, update those too
         self.canvas_width = self.width
-        self.canvas.configure(width=self.width)
         self.canvas_height = self.height
-        self.canvas.configure(height=self.height)
+        self.display.configure(width=self.width, height=self.height)
+        self.renderer.width = self.width
+        self.renderer.height = self.height
+        self.renderer.root_surface.width = self.width
+        self.renderer.root_surface.height = self.height
+        self.renderer.dirty = True
 
         # Update all children to match new dimensions
         self._update_children()
@@ -581,7 +516,8 @@ class _window_internal(threading.Thread, Component):
             self: Returns self for method chaining
         """
         if _object:
-            self.canvas.itemconfigure(_object, kwargs)
+            self.renderer.root_surface.configure(_object, **kwargs)
+            self.renderer.dirty = True
             return self
 
         if "width" in kwargs or "height" in kwargs:
@@ -605,6 +541,23 @@ class _window_internal(threading.Thread, Component):
         self.root.update()
         return self
 
+    def _render_tick(self):
+        if self.renderer is None or self.root is None:
+            return
+        if self._render_batch_depth > 0:
+            self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
+            return
+        frame = self.renderer.render_if_due()
+        if frame is not None:
+            self.display.show_frame(frame)
+        self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
+
+    def begin_render_batch(self):
+        self._render_batch_depth += 1
+
+    def end_render_batch(self):
+        self._render_batch_depth = max(0, self._render_batch_depth - 1)
+
 
 def Window(
     width=500,
@@ -615,6 +568,8 @@ def Window(
     closing_command=None,
     resizable=(True, True),
     override=False,
+    render_mode="image_gl",
+    fps=60,
 ):
     """Window constructor
 
@@ -635,6 +590,12 @@ def Window(
     if type(resizable) is bool:
         resizable = (resizable, resizable)
 
+    if render_mode != "image_gl":
+        raise ValueError(
+            "This branch only supports render_mode='image_gl'. "
+            "Use master for legacy tkinter canvas rendering."
+        )
+
     if title is None:
         title = "ntk"
 
@@ -647,6 +608,8 @@ def Window(
         closing_command,
         resizable,
         override,
+        render_mode,
+        fps,
     )
 
     # Start window thread
@@ -691,7 +654,9 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window(title=None, width=800, height=500).place(400, 300)
+    canvas = Window(
+        title=None, width=800, height=500, render_mode="image_gl", fps=60
+    ).place(400, 300)
     print(
         fonts_manager.loadfont(
             r"C:\Users\reube\nebulatk\examples\Fonts\HARLOWSI.TTF", private=False

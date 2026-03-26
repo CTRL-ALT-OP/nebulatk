@@ -1,5 +1,4 @@
 from PIL import Image as pil
-from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
 import math
@@ -29,8 +28,9 @@ class Image:
                         _object.height - (_object.border_width * 2),
                     )
 
-                # Convert image for tkinter
-                self.tk_images[_object.master] = convert_image(_object, self.image)
+                if _needs_tk_conversion(_object):
+                    # Convert image for tkinter only when a tkinter canvas backend is active
+                    self.tk_images[_object.master] = convert_image(_object, self.image)
 
         elif type(image) is str:
             # Open image
@@ -43,14 +43,16 @@ class Image:
                         _object.height - (_object.border_width * 2),
                     )
 
-                # Convert image for tkinter
-                self.tk_images[_object.master] = convert_image(_object, self.image)
+                if _needs_tk_conversion(_object):
+                    # Convert image for tkinter only when a tkinter canvas backend is active
+                    self.tk_images[_object.master] = convert_image(_object, self.image)
 
         elif image is not None:
             self.image = image
 
             if _object is not None:
-                self.tk_images[_object.master] = convert_image(_object, self.image)
+                if _needs_tk_conversion(_object):
+                    self.tk_images[_object.master] = convert_image(_object, self.image)
 
     def resize(self, width, height):
         self.tk_images = {}
@@ -158,24 +160,28 @@ class Image:
         return self
 
     def tk_image(self, _object):
+        if not _needs_tk_conversion(_object):
+            return self.image
         if _object.master not in self.tk_images:
             self.tk_images[_object.master] = convert_image(_object, self.image)
         return self.tk_images[_object.master]
 
 
 def convert_image(_object, image):
-    # Handle Container objects
-    if hasattr(_object, "_window"):
-        # _object is a Container itself (when passed as master to create_image)
-        tkinter_root = _object._window.root
-    elif hasattr(_object.master, "_window"):
-        # _object.master is a Container (when a widget is parented to a container)
-        tkinter_root = _object.master._window.root
-    else:
-        # This is a regular window_internal object
-        tkinter_root = _object.master.root
+    # OpenGL pipeline consumes PIL images directly.
+    return image
 
-    return piltk.PhotoImage(image, master=tkinter_root)
+
+def _needs_tk_conversion(_object):
+    master = getattr(_object, "master", None)
+    if master is None:
+        return False
+    if hasattr(master, "_window"):
+        window = master._window
+    else:
+        window = master
+    render_mode = getattr(window, "render_mode", "canvas")
+    return render_mode != "image_gl"
 
 
 def load_image(_object, image, return_both=False):
@@ -207,8 +213,9 @@ def load_image(_object, image, return_both=False):
                 pil.NEAREST,
             )
 
-        # Convert image for tkinter
-        image_converted = convert_image(_object, image)
+        # Convert image for tkinter only when required by backend
+        if _needs_tk_conversion(_object):
+            image_converted = convert_image(_object, image)
 
     # Return both PhotoImage and PilImage objects if requested
     return (image_converted, image) if return_both else image_converted
@@ -232,8 +239,9 @@ def load_image_generic(window, image, return_both=False):
         # Open image
         image = pil.open(image)
 
-        # Convert image for tkinter
-        image_converted = convert_image(window, image)
+        # Convert image for tkinter only when required by backend
+        if _needs_tk_conversion(window):
+            image_converted = convert_image(window, image)
 
     # Return both PhotoImage and PilImage objects if requested
     return (image_converted, image) if return_both else image_converted

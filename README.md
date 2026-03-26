@@ -3,7 +3,7 @@
 # ctrl.alt.op@gmail.com
 
 NebulaTk is a wrapper of Tkinter that implements many functions that Tkinter does not.
-Currently, it exclusively uses the tcl Canvas widget to display visuals, to allow for full transparency support.
+It now includes an image-based renderer option: widgets can be composed into Pillow surfaces and presented through a display layer that can use OpenGL (with Tk fallback if unavailable).
 All events, widgets, and functionality has been written either custom or with Pillow.
 
 # To run project:

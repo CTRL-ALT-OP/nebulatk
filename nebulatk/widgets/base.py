@@ -844,32 +844,44 @@ class _widget(_widget_properties, Component):
         # old_x, old_y = self.x, self.y
         x = int(x)
         y = int(y)
-        if self.bg_object is None and self.image_object is None:
-            standard_methods.place_bulk(self, x, y)
-            if self.bg_object is not None and self.bounds_type == "box":
-                self.object = self.bg_object
-            elif self.image_object is not None:
-                self.object = self.image_object
+        if hasattr(self.master, "begin_render_batch"):
+            self.master.begin_render_batch()
+        try:
+            if self.bg_object is None and self.image_object is None:
+                standard_methods.place_bulk(self, x, y)
+                if self.bg_object is not None and self.bounds_type == "box":
+                    self.object = self.bg_object
+                elif self.image_object is not None:
+                    self.object = self.image_object
+                else:
+                    self.object = self.text_object
             else:
-                self.object = self.text_object
-        else:
-            standard_methods.update_positions(self, x, y)
-        # bounds_manager.update_bounds(self, old_x, old_y, x, y, mode=self.bounds_type)
+                standard_methods.update_positions(self, x, y)
+            # bounds_manager.update_bounds(self, old_x, old_y, x, y, mode=self.bounds_type)
 
-        self._position = [x, y]
+            self._position = [x, y]
 
-        self._update_children()
+            self._update_children()
 
-        if hasattr(self, "original_x"):
-            self.original_x = x
-            self.original_y = y
+            if hasattr(self, "original_x"):
+                self.original_x = x
+                self.original_y = y
+        finally:
+            if hasattr(self.master, "end_render_batch"):
+                self.master.end_render_batch()
 
         return self
 
     def update(self):
-        standard_methods.schedule_delete(self)
-        self.place(self.x, self.y)
-        standard_methods.delete_scheduled(self)
+        if hasattr(self.master, "begin_render_batch"):
+            self.master.begin_render_batch()
+        try:
+            standard_methods.schedule_delete(self)
+            self.place(self.x, self.y)
+            standard_methods.delete_scheduled(self)
+        finally:
+            if hasattr(self.master, "end_render_batch"):
+                self.master.end_render_batch()
 
     def _configure_size(self, size):
         self.update()

@@ -6,6 +6,7 @@ from . import image_manager
 from . import bounds_manager
 from . import standard_methods
 from . import animation_controller
+from . import rendering
 
 __all__ = [
     "colors_manager",
@@ -14,4 +15,5 @@ __all__ = [
     "standard_methods",
     "fonts_manager",
     "animation_controller",
+    "rendering",
 ]
