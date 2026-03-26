@@ -268,6 +268,8 @@ class _window_internal(threading.Thread, Component):
                 nested = self._find_deepest_hit(child.children, local_x, local_y)
                 if nested is not None:
                     return nested
+            if not getattr(child, "can_focus", True):
+                continue
             return child
         return None
 
