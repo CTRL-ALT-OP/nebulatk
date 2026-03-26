@@ -108,7 +108,9 @@ def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))
             file_buffer = ctypes.create_unicode_buffer(4096)
             dialog = OPENFILENAMEW()
             dialog.lStructSize = ctypes.sizeof(OPENFILENAMEW)
-            dialog.hwndOwner = window.root.winfo_id() if window.root is not None else None
+            dialog.hwndOwner = (
+                window.root.winfo_id() if window.root is not None else None
+            )
             dialog.lpstrFilter = filter_spec
             dialog.lpstrFile = file_buffer
             dialog.nMaxFile = len(file_buffer)
@@ -840,13 +842,19 @@ def __main__():
     btn6 = Button(window, image=img)
     btn6.place(0, 0)
     sleep(2)
+    print("resizing window")
     window.resize(1000, 800)  # Change size
+    print("configuring window")
     window.configure(title="New Title", resizable=(False, False))  # Change properties
+    print("hiding window")
     window.hide()  # Hide window
     sleep(4)
     window.show()
     window.taskbar_manager._initialize_custom_thumbnails()
     animate_btn()
+    sleep(30)
+    window.destroy()
+    canvas.destroy()
     # window = Window()
 
     """def trigger_custom_thumbnail():

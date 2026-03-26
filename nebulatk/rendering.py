@@ -3,6 +3,8 @@ import itertools
 import re
 import threading
 import time
+import traceback
+import ctypes
 from dataclasses import dataclass
 
 from PIL import Image as PILImage
@@ -299,6 +301,7 @@ class NativeEvent:
 
 _GLFW_LOCK = threading.Lock()
 _GLFW_REFCOUNT = 0
+_GLFW_API_LOCK = threading.RLock()
 
 
 def _glfw_init_ref():
@@ -350,6 +353,9 @@ class NativeGLWindow:
 
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
+        glfw.window_hint(glfw.CLIENT_API, glfw.OPENGL_API)
+        # Profile hints are only valid for OpenGL >= 3.2. Since we request 2.1
+        # for fixed-function compatibility, do not set OPENGL_PROFILE here.
         glfw.window_hint(
             glfw.RESIZABLE, glfw.TRUE if (self._resizable[0] or self._resizable[1]) else glfw.FALSE
         )
@@ -388,6 +394,20 @@ class NativeGLWindow:
     def _dispatch(self, key, event):
         for callback in self._bindings.get(key, []):
             callback(event)
+
+    def _is_owner_thread(self):
+        return threading.get_ident() == self._owner_thread_id
+
+    def _run_window_op(self, op):
+        if self._window is None:
+            return
+        def _locked_op():
+            with _GLFW_API_LOCK:
+                op()
+        if self._is_owner_thread():
+            _locked_op()
+        else:
+            self.after(0, _locked_op)
 
     def _on_close_requested(self, _window):
         callback = self._protocol_handlers.get("WM_DELETE_WINDOW")
@@ -461,7 +481,8 @@ class NativeGLWindow:
         due = time.time() + (max(0, int(ms)) / 1000.0)
         with self._timers_lock:
             heapq.heappush(self._timers, (due, next(self._timer_counter), timer_id, callback))
-        glfw.post_empty_event()
+        with _GLFW_API_LOCK:
+            glfw.post_empty_event()
         return timer_id
 
     def after_cancel(self, timer_id):
@@ -478,7 +499,10 @@ class NativeGLWindow:
             if timer_id in self._cancelled_timers:
                 self._cancelled_timers.discard(timer_id)
                 continue
-            callback()
+            try:
+                callback()
+            except Exception:
+                traceback.print_exc()
 
     def geometry(self, geometry):
         if self._window is None:
@@ -488,63 +512,87 @@ class NativeGLWindow:
             return
         width = int(match.group(1))
         height = int(match.group(2))
-        glfw.set_window_size(self._window, width, height)
-        if match.group(3) is not None and match.group(4) is not None:
-            glfw.set_window_pos(self._window, int(match.group(3)), int(match.group(4)))
+        pos_x = int(match.group(3)) if match.group(3) is not None else None
+        pos_y = int(match.group(4)) if match.group(4) is not None else None
+
+        def _apply():
+            if self._window is None:
+                return
+            glfw.set_window_size(self._window, width, height)
+            if pos_x is not None and pos_y is not None:
+                glfw.set_window_pos(self._window, pos_x, pos_y)
+
+        self._run_window_op(_apply)
 
     def title(self, value):
-        if self._window is not None:
-            glfw.set_window_title(self._window, str(value))
+        self._run_window_op(
+            lambda: self._window is not None
+            and glfw.set_window_title(self._window, str(value))
+        )
 
     def resizable(self, can_resize_x, can_resize_y):
         self._resizable = (bool(can_resize_x), bool(can_resize_y))
-        glfw.set_window_attrib(
-            self._window, glfw.RESIZABLE, glfw.TRUE if any(self._resizable) else glfw.FALSE
+        self._run_window_op(
+            lambda: self._window is not None
+            and glfw.set_window_attrib(
+                self._window,
+                glfw.RESIZABLE,
+                glfw.TRUE if any(self._resizable) else glfw.FALSE,
+            )
         )
 
     def overrideredirect(self, override):
-        glfw.set_window_attrib(
-            self._window, glfw.DECORATED, glfw.FALSE if override else glfw.TRUE
+        self._run_window_op(
+            lambda: self._window is not None
+            and glfw.set_window_attrib(
+                self._window, glfw.DECORATED, glfw.FALSE if override else glfw.TRUE
+            )
         )
 
     def wm_attributes(self, *_args, **_kwargs):
         return None
 
     def lift(self):
-        if self._window is not None:
-            glfw.focus_window(self._window)
+        self._run_window_op(
+            lambda: self._window is not None and glfw.focus_window(self._window)
+        )
 
     def update(self):
         if self._window is None:
             return
         # External callers may invoke update() from non-window threads.
         # Keep this method GL-safe by avoiding draw calls here.
-        glfw.post_empty_event()
-        if threading.get_ident() == self._owner_thread_id:
-            glfw.poll_events()
-            self._process_timers()
+        with _GLFW_API_LOCK:
+            glfw.post_empty_event()
+            if threading.get_ident() == self._owner_thread_id:
+                glfw.poll_events()
+                self._process_timers()
 
     def update_idletasks(self):
         self._process_timers()
 
     def withdraw(self):
-        if self._window is not None:
-            glfw.hide_window(self._window)
+        self._run_window_op(
+            lambda: self._window is not None and glfw.hide_window(self._window)
+        )
 
     def deiconify(self):
-        if self._window is not None:
-            glfw.show_window(self._window)
+        self._run_window_op(
+            lambda: self._window is not None and glfw.show_window(self._window)
+        )
 
     def clipboard_clear(self):
         self._clipboard_fallback = ""
-        if self._window is not None:
-            glfw.set_clipboard_string(self._window, "")
+        self._run_window_op(
+            lambda: self._window is not None and glfw.set_clipboard_string(self._window, "")
+        )
 
     def clipboard_append(self, value):
         text = str(value)
         self._clipboard_fallback = text
-        if self._window is not None:
-            glfw.set_clipboard_string(self._window, text)
+        self._run_window_op(
+            lambda: self._window is not None and glfw.set_clipboard_string(self._window, text)
+        )
 
     def clipboard_get(self):
         if self._window is None:
@@ -562,34 +610,51 @@ class NativeGLWindow:
         if self._window is None:
             return 0
         if hasattr(glfw, "get_win32_window"):
-            return glfw.get_win32_window(self._window)
+            with _GLFW_API_LOCK:
+                return glfw.get_win32_window(self._window)
         return 0
 
     def mainloop(self):
         if self._window is None:
             return
         self._running = True
-        while self._running and not glfw.window_should_close(self._window):
-            glfw.wait_events_timeout(0.001)
+        while self._running:
+            with _GLFW_API_LOCK:
+                if self._window is None or glfw.window_should_close(self._window):
+                    break
+                glfw.poll_events()
+
             self._process_timers()
+
             if self._draw_callback is not None:
-                glfw.make_context_current(self._window)
-                self._draw_callback()
-                glfw.swap_buffers(self._window)
+                with _GLFW_API_LOCK:
+                    if self._window is None:
+                        break
+                    glfw.make_context_current(self._window)
+                    try:
+                        self._draw_callback()
+                        glfw.swap_buffers(self._window)
+                    except Exception:
+                        traceback.print_exc()
+
+            # Yield briefly so multiple windows and animation threads stay smooth.
+            time.sleep(0.001)
         self.destroy()
 
     def quit(self):
         self._running = False
         if self._window is not None:
-            glfw.set_window_should_close(self._window, True)
-            glfw.post_empty_event()
+            with _GLFW_API_LOCK:
+                glfw.set_window_should_close(self._window, True)
+                glfw.post_empty_event()
 
     def destroy(self):
         if self._closed:
             return
         self._closed = True
         if self._window is not None:
-            glfw.destroy_window(self._window)
+            with _GLFW_API_LOCK:
+                glfw.destroy_window(self._window)
             self._window = None
         _glfw_terminate_ref()
 
@@ -598,7 +663,14 @@ class OpenGLImageDisplay:
     def __init__(self, root, width, height):
         self._enabled = glfw is not None and GL is not None
         self._texture_id = None
+        self._program_id = None
+        self._vbo_id = None
+        self._vao_id = None
+        self._pos_loc = -1
+        self._uv_loc = -1
+        self._sampler_loc = -1
         self._frame_rgba = None
+        self._needs_texture_upload = False
         self._texture_size = (0, 0)
         self.width = int(width)
         self.height = int(height)
@@ -613,7 +685,6 @@ class OpenGLImageDisplay:
 
     def _init_gl(self):
         GL.glDisable(GL.GL_DEPTH_TEST)
-        GL.glEnable(GL.GL_TEXTURE_2D)
         GL.glEnable(GL.GL_BLEND)
         GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
         self._texture_id = GL.glGenTextures(1)
@@ -622,11 +693,155 @@ class OpenGLImageDisplay:
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
+        self._program_id = self._build_program()
+        self._setup_fullscreen_quad()
+
+    def _compile_shader(self, shader_type, source):
+        shader = GL.glCreateShader(shader_type)
+        GL.glShaderSource(shader, source)
+        GL.glCompileShader(shader)
+        if GL.glGetShaderiv(shader, GL.GL_COMPILE_STATUS) != GL.GL_TRUE:
+            log = GL.glGetShaderInfoLog(shader)
+            GL.glDeleteShader(shader)
+            raise RuntimeError(f"OpenGL shader compile failed: {log}")
+        return shader
+
+    def _build_program(self):
+        vertex_src_330 = """
+        #version 330 core
+        layout (location = 0) in vec2 a_pos;
+        layout (location = 1) in vec2 a_uv;
+        out vec2 v_uv;
+        void main() {
+            v_uv = a_uv;
+            gl_Position = vec4(a_pos, 0.0, 1.0);
+        }
+        """
+        fragment_src_330 = """
+        #version 330 core
+        in vec2 v_uv;
+        out vec4 FragColor;
+        uniform sampler2D u_texture;
+        void main() {
+            FragColor = texture(u_texture, v_uv);
+        }
+        """
+        vertex_src_120 = """
+        #version 120
+        attribute vec2 a_pos;
+        attribute vec2 a_uv;
+        varying vec2 v_uv;
+        void main() {
+            v_uv = a_uv;
+            gl_Position = vec4(a_pos, 0.0, 1.0);
+        }
+        """
+        fragment_src_120 = """
+        #version 120
+        varying vec2 v_uv;
+        uniform sampler2D u_texture;
+        void main() {
+            gl_FragColor = texture2D(u_texture, v_uv);
+        }
+        """
+
+        variants = [
+            (vertex_src_330, fragment_src_330, True),
+            (vertex_src_120, fragment_src_120, False),
+        ]
+        last_error = None
+
+        for vertex_src, fragment_src, explicit_locations in variants:
+            program = None
+            vertex = None
+            fragment = None
+            try:
+                vertex = self._compile_shader(GL.GL_VERTEX_SHADER, vertex_src)
+                fragment = self._compile_shader(GL.GL_FRAGMENT_SHADER, fragment_src)
+                program = GL.glCreateProgram()
+                GL.glAttachShader(program, vertex)
+                GL.glAttachShader(program, fragment)
+                if not explicit_locations:
+                    GL.glBindAttribLocation(program, 0, "a_pos")
+                    GL.glBindAttribLocation(program, 1, "a_uv")
+                GL.glLinkProgram(program)
+                if GL.glGetProgramiv(program, GL.GL_LINK_STATUS) != GL.GL_TRUE:
+                    log = GL.glGetProgramInfoLog(program)
+                    raise RuntimeError(f"OpenGL program link failed: {log}")
+                GL.glDeleteShader(vertex)
+                GL.glDeleteShader(fragment)
+                self._pos_loc = GL.glGetAttribLocation(program, "a_pos")
+                self._uv_loc = GL.glGetAttribLocation(program, "a_uv")
+                self._sampler_loc = GL.glGetUniformLocation(program, "u_texture")
+                return program
+            except Exception as exc:
+                last_error = exc
+                if program is not None:
+                    GL.glDeleteProgram(program)
+                if vertex is not None:
+                    GL.glDeleteShader(vertex)
+                if fragment is not None:
+                    GL.glDeleteShader(fragment)
+                continue
+
+        raise RuntimeError(f"Failed to initialize OpenGL shader pipeline: {last_error}")
+
+    def _setup_fullscreen_quad(self):
+        vertex_data = (
+            -1.0,
+            -1.0,
+            0.0,
+            1.0,
+            1.0,
+            -1.0,
+            1.0,
+            1.0,
+            -1.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            1.0,
+            0.0,
+        )
+        vertices = (ctypes.c_float * len(vertex_data))(*vertex_data)
+        self._vbo_id = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo_id)
+        GL.glBufferData(
+            GL.GL_ARRAY_BUFFER,
+            ctypes.sizeof(vertices),
+            vertices,
+            GL.GL_STATIC_DRAW,
+        )
+
+        # Core profiles require a VAO; compatibility profiles can draw without one.
+        if hasattr(GL, "glGenVertexArrays"):
+            try:
+                self._vao_id = GL.glGenVertexArrays(1)
+                GL.glBindVertexArray(self._vao_id)
+            except Exception:
+                self._vao_id = None
+
+        stride = 4 * 4
+        if self._pos_loc >= 0:
+            GL.glEnableVertexAttribArray(self._pos_loc)
+            GL.glVertexAttribPointer(self._pos_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(0))
+        if self._uv_loc >= 0:
+            GL.glEnableVertexAttribArray(self._uv_loc)
+            GL.glVertexAttribPointer(
+                self._uv_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(8)
+            )
+
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        if self._vao_id is not None:
+            GL.glBindVertexArray(0)
 
     def show_frame(self, frame):
         rgba = frame.convert("RGBA")
         self.width, self.height = rgba.size
         self._frame_rgba = rgba.tobytes("raw", "RGBA")
+        self._needs_texture_upload = True
 
     def draw(self):
         framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.root.handle)
@@ -640,48 +855,71 @@ class OpenGLImageDisplay:
 
         GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+        if self._needs_texture_upload:
+            if self._texture_size != (self.width, self.height):
+                GL.glTexImage2D(
+                    GL.GL_TEXTURE_2D,
+                    0,
+                    GL.GL_RGBA,
+                    self.width,
+                    self.height,
+                    0,
+                    GL.GL_RGBA,
+                    GL.GL_UNSIGNED_BYTE,
+                    self._frame_rgba,
+                )
+                self._texture_size = (self.width, self.height)
+            else:
+                GL.glTexSubImage2D(
+                    GL.GL_TEXTURE_2D,
+                    0,
+                    0,
+                    0,
+                    self.width,
+                    self.height,
+                    GL.GL_RGBA,
+                    GL.GL_UNSIGNED_BYTE,
+                    self._frame_rgba,
+                )
+            self._needs_texture_upload = False
 
-        if self._texture_size != (self.width, self.height):
-            GL.glTexImage2D(
-                GL.GL_TEXTURE_2D,
-                0,
-                GL.GL_RGBA,
-                self.width,
-                self.height,
-                0,
-                GL.GL_RGBA,
-                GL.GL_UNSIGNED_BYTE,
-                self._frame_rgba,
-            )
-            self._texture_size = (self.width, self.height)
+        GL.glUseProgram(self._program_id)
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
+        if self._sampler_loc >= 0:
+            GL.glUniform1i(self._sampler_loc, 0)
+
+        if self._vao_id is not None:
+            GL.glBindVertexArray(self._vao_id)
         else:
-            GL.glTexSubImage2D(
-                GL.GL_TEXTURE_2D,
-                0,
-                0,
-                0,
-                self.width,
-                self.height,
-                GL.GL_RGBA,
-                GL.GL_UNSIGNED_BYTE,
-                self._frame_rgba,
-            )
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo_id)
+            stride = 4 * 4
+            if self._pos_loc >= 0:
+                GL.glEnableVertexAttribArray(self._pos_loc)
+                GL.glVertexAttribPointer(
+                    self._pos_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(0)
+                )
+            if self._uv_loc >= 0:
+                GL.glEnableVertexAttribArray(self._uv_loc)
+                GL.glVertexAttribPointer(
+                    self._uv_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(8)
+                )
 
-        GL.glBegin(GL.GL_QUADS)
-        GL.glTexCoord2f(0, 1)
-        GL.glVertex2f(-1, -1)
-        GL.glTexCoord2f(1, 1)
-        GL.glVertex2f(1, -1)
-        GL.glTexCoord2f(1, 0)
-        GL.glVertex2f(1, 1)
-        GL.glTexCoord2f(0, 0)
-        GL.glVertex2f(-1, 1)
-        GL.glEnd()
+        GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
+
+        if self._vao_id is not None:
+            GL.glBindVertexArray(0)
+        else:
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+            if self._pos_loc >= 0:
+                GL.glDisableVertexAttribArray(self._pos_loc)
+            if self._uv_loc >= 0:
+                GL.glDisableVertexAttribArray(self._uv_loc)
+
+        GL.glUseProgram(0)
 
     def configure(self, width=None, height=None):
         if width is not None:
             self.width = int(width)
         if height is not None:
             self.height = int(height)
-        if self.root is not None:
-            glfw.set_window_size(self.root.handle, self.width, self.height)
