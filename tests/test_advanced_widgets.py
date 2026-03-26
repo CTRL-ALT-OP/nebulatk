@@ -13,7 +13,7 @@ import nebulatk as ntk
 @pytest.fixture
 def canvas() -> ntk.Window:
     """Create a test window for widget testing."""
-    window = ntk.Window(title="Test Window", width=800, height=500)
+    window = ntk.Window(title="Test Window", width=800, height=500, render_mode="image_gl", fps=60)
     yield window
     window.close()
 
@@ -250,26 +250,19 @@ def test_entry_cursor_display(text_entry) -> None:
     """Test cursor display in the Entry widget."""
     entry = text_entry
 
-    with (
-        patch.object(entry.master.canvas, "delete"),
-        patch.object(entry.master.canvas, "create_rectangle") as create_rectangle_mock,
-    ):
-        entry.clicked(0, 0)
+    entry.clicked(0, 0)
+    entry._update_cursor_position()
+
+    assert entry.cursor.visible
+    assert entry.cursor.width <= 2
+    assert entry.cursor.bg_object in entry.master.renderer.root_surface.objects
+
+    # Test cursor coordinates based on text position
+    with patch.object(ntk.fonts_manager, "measure_text", return_value=10):
+        old_x = entry.cursor.x
+        set_cursor_position(entry, entry.cursor_position + 1)
         entry._update_cursor_position()
-
-        assert create_rectangle_mock.called
-        args, kwargs = create_rectangle_mock.call_args
-        assert len(args) >= 4
-
-        assert entry.cursor.visible
-        assert entry.cursor.width <= 2
-
-        # Test cursor coordinates based on text position
-        with patch.object(ntk.fonts_manager, "measure_text", return_value=10):
-            old_x = entry.cursor.x
-            set_cursor_position(entry, entry.cursor_position + 1)
-            entry._update_cursor_position()
-            assert entry.cursor.x != old_x
+        assert entry.cursor.x != old_x
 
 
 def test_entry_cursor_visibility(text_entry, canvas) -> None:
@@ -527,22 +520,11 @@ def test_entry_text_truncation(basic_entry, canvas) -> None:
 
     # Test truncation mechanics with a fixed width
     with patch.object(ntk.fonts_manager, "get_max_length", return_value=20):
-        # Verify that display text is truncated
-        with patch.object(canvas.canvas, "create_text") as mock_create_text:
-            entry.update()  # Force a redraw of the widget
-            mock_create_text.assert_called()
-
-            # Extract the text argument from the create_text call
-            text_arg = None
-            for call in mock_create_text.call_args_list:
-                args, kwargs = call
-                if "text" in kwargs:
-                    text_arg = kwargs["text"]
-                elif len(args) > 1:
-                    text_arg = args[1]  # Typical position for text argument
-
-            assert text_arg is not None
-            assert len(text_arg) <= 20, "Text should be truncated to 20 characters"
+        entry.update()  # Force a redraw of the widget
+        assert len(entry.text) <= 20, "Text should be truncated to 20 characters"
+        if entry.text_object is not None:
+            text_data = entry.master.renderer.root_surface.objects[entry.text_object].data
+            assert len(text_data["text"]) <= 20
 
         # Test truncation with cursor at different positions
         set_cursor_position(entry, 0)
@@ -658,53 +640,23 @@ def test_entry_text_justification(
     entry.configure(justify=justify_value)
     assert entry.justify == justify_value
 
-    # Test visual text justification
-    with (
-        patch.object(canvas.canvas, "create_text") as mock_create_text,
-        patch.object(canvas.canvas, "itemconfig") as mock_itemconfig,
-    ):
-        entry.update()
-
-        # Test create_text call
-        if mock_create_text.called:
-            for call in mock_create_text.call_args_list:
-                args, kwargs = call
-                if "anchor" in kwargs:
-                    assert kwargs["anchor"] == expected_anchor
-
-        # Test itemconfig call
-        if mock_itemconfig.called:
-            for call in mock_itemconfig.call_args_list:
-                args, kwargs = call
-                if len(args) > 1 and "anchor" in str(args[1]):
-                    assert expected_anchor in str(args[1])
+    entry.update()
+    assert entry.text_object is not None
+    text_data = entry.master.renderer.root_surface.objects[entry.text_object].data
+    assert text_data["anchor"] == expected_anchor
 
     # Test justification change
     new_justify = "center" if justify_value != "center" else "left"
     entry.configure(justify=new_justify)
     assert entry.justify == new_justify
 
-    # Test that the new justification is applied visually
+    # Test that the new justification is applied in render data
     new_expected_anchor = (
         "center" if new_justify == "center" else ("w" if new_justify == "left" else "e")
     )
-    with patch.object(canvas.canvas, "create_text") as mock_create_text:
-        entry.update()
-        assert mock_create_text.called
-
-        # Find the anchor update in the calls
-        anchor_updated = False
-        assert len(mock_create_text.call_args_list) > 0
-        for call in mock_create_text.call_args_list:
-            args, kwargs = call
-            if len(args) > 1 and isinstance(args[1], dict) and "anchor" in args[1]:
-                assert args[1]["anchor"] == new_expected_anchor
-                anchor_updated = True
-            elif len(kwargs) > 1 and "anchor" in str(kwargs):
-                assert new_expected_anchor in str(kwargs)
-                anchor_updated = True
-
-        assert anchor_updated, "Text anchor wasn't updated with the new justification"
+    entry.update()
+    updated_text_data = entry.master.renderer.root_surface.objects[entry.text_object].data
+    assert updated_text_data["anchor"] == new_expected_anchor
 
     # Test cursor positioning with different justifications
     if hasattr(entry, "_find_cursor_position_from_click"):

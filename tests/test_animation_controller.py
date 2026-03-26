@@ -19,7 +19,7 @@ def canvas() -> ntk.Window:
     Returns:
         ntk.Window: A window instance for testing animations.
     """
-    window = ntk.Window(title="Test Window", width=800, height=500)
+    window = ntk.Window(title="Test Window", width=800, height=500, render_mode="image_gl", fps=60)
     yield window
     window.close()
 

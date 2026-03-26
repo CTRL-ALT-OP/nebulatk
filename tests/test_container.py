@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +19,20 @@ class TestContainer:
     @pytest.fixture
     def app(self):
         """Create a test application window."""
-        window = ntk.Window(title="Container Test", width=800, height=600)
+        window = ntk.Window(
+            title="Container Test",
+            width=800,
+            height=600,
+            render_mode="image_gl",
+            fps=30,
+        )
+        yield window
+        window.close()
+
+    @pytest.fixture
+    def app_image_gl(self):
+        """Create a test application window using image/OpenGL mode."""
+        window = ntk.Window(title="Container ImageGL Test", width=640, height=480, render_mode="image_gl", fps=30)
         yield window
         window.close()
 
@@ -47,9 +61,11 @@ class TestContainer:
         assert container.down is None
         assert container.hovered_child is None
 
-        # Test canvas creation
+        # Test image_gl surface creation
         assert hasattr(container, "canvas")
-        assert container.canvas is not None
+        assert container.canvas is None
+        assert container.surface is not None
+        assert container.surface_id is not None
 
     def test_container_placement(self, app):
         """Test container placement and positioning."""
@@ -100,25 +116,24 @@ class TestContainer:
         assert frame not in app.children
 
     def test_canvas_drawing_isolation(self, app):
-        """Test that child widgets draw on container canvas, not main window canvas."""
+        """Test that child widgets draw on container surface, not root surface."""
         container = ntk.Container(app, width=300, height=200)
         container.place(50, 50)
 
-        # Get initial canvas item counts
-        initial_container_items = len(container.canvas.find_all())
-        initial_window_items = len(app.canvas.find_all())
+        initial_container_items = len(container.surface.objects)
+        initial_window_items = len(app.renderer.root_surface.objects)
 
         # Create a child widget
         button = ntk.Button(container, text="Test Button", width=100, height=30)
         button.place(10, 10)
 
-        # Container canvas should have more items now
-        final_container_items = len(container.canvas.find_all())
-        final_window_items = len(app.canvas.find_all())
+        # Container surface should have more items now
+        final_container_items = len(container.surface.objects)
+        final_window_items = len(app.renderer.root_surface.objects)
 
         assert final_container_items > initial_container_items
-        # Window canvas should only have items for the container itself, not the button
-        assert final_window_items >= initial_window_items
+        # Root surface should not gain child widget objects from the container
+        assert final_window_items == initial_window_items
 
     def test_container_canvas_methods(self, app):
         """Test container's canvas drawing methods."""
@@ -223,22 +238,16 @@ class TestContainer:
         # Should not raise exceptions
 
     def test_container_widget_layering(self, app):
-        """Test that container implements proper widget layering."""
+        """Test container preserves object order for layered widgets."""
         container = ntk.Container(app, width=300, height=200)
         container.place(50, 50)
 
-        # Create widgets
-        button = ntk.Button(container, text="Foreground", width=100, height=30)
-        button.place(10, 10)
+        frame = ntk.Frame(container, width=120, height=60, fill="#ff0000").place(0, 0)
+        button = ntk.Button(container, text="Foreground", width=100, height=30).place(10, 10)
 
-        # Check that canvas items have proper tags
-        canvas_items = container.canvas.find_all()
-
-        # Check for proper tagging
-        fg_items = container.canvas.find_withtag("fg_item")
-        bg_items = container.canvas.find_withtag("background_item")
-
-        assert len(fg_items) > 0  # Should have foreground items from child widgets
+        frame_index = container.surface._z_order.index(frame.bg_object)
+        button_index = container.surface._z_order.index(button.bg_object)
+        assert frame_index < button_index
 
     def test_container_root_property(self, app):
         """Test container's root property behavior."""
@@ -251,7 +260,7 @@ class TestContainer:
         new_parent = ntk.Frame(app, width=400, height=300)
         container.root = new_parent
         assert container.root == new_parent
-        assert container._window == app  # Window should still point to original window
+        assert container._window == new_parent
 
     def test_nested_containers(self, app):
         """Test containers within containers."""
@@ -277,44 +286,23 @@ class TestContainer:
         assert button in child_container.children
 
     def test_container_canvas_object_replication(self, app):
-        """Test that container replicates background objects from main window."""
-        # Create some objects on the main window first
+        """Test container does not replicate root-surface objects automatically."""
         app_frame = ntk.Frame(app, width=100, height=50, fill="#00ff00")
         app_frame.place(10, 10)
 
-        # Now create container - it should replicate existing objects
+        root_count_before = len(app.renderer.root_surface.objects)
         container = ntk.Container(app, width=300, height=200)
         container.place(50, 50)
 
-        # Container should have background items replicated from main window
-        bg_items = container.canvas.find_withtag("background_item")
-        assert len(bg_items) > 0
+        assert len(app.renderer.root_surface.objects) >= root_count_before
+        assert len(container.surface.objects) == 0
 
     def test_container_background_position_adjustment(self, app):
-        """Test that replicated background objects are positioned correctly relative to container."""
-        # Create a frame at position (20, 30) on the main window
-        app_frame = ntk.Frame(app, width=60, height=40, fill="#ff0000")
-        app_frame.place(20, 30)
-
-        # Create container at position (50, 60)
+        """Test container surface placement updates the renderer metadata."""
         container = ntk.Container(app, width=300, height=200)
         container.place(50, 60)
-
-        # Find the replicated background item
-        bg_items = container.canvas.find_withtag("background_item")
-        assert len(bg_items) > 0
-
-        # Get the coordinates of the first background item (should be the replicated frame)
-        bg_item = bg_items[0]
-        coords = container.canvas.coords(bg_item)
-
-        # The replicated frame should be positioned at:
-        # Original position (20, 30) - Container position (50, 60) = (-30, -30)
-        expected_x = 20 - 50  # -30
-        expected_y = 30 - 60  # -30
-
-        assert coords[0] == expected_x, f"Expected x={expected_x}, got {coords[0]}"
-        assert coords[1] == expected_y, f"Expected y={expected_y}, got {coords[1]}"
+        assert container.surface.x == 50
+        assert container.surface.y == 60
 
     def test_container_destruction_cleanup(self, app):
         """Test proper cleanup when container is destroyed."""
@@ -346,11 +334,10 @@ class TestContainer:
 
         from nebulatk import image_manager
 
-        # This should work without errors (container has _window attribute)
-        with patch("PIL.ImageTk.PhotoImage") as mock_photo:
-            mock_photo.return_value = "mock_photo_image"
-            result = image_manager.convert_image(mock_widget, MagicMock())
-            assert result == "mock_photo_image"
+        # OpenGL path should return the PIL object directly.
+        source_image = MagicMock()
+        result = image_manager.convert_image(mock_widget, source_image)
+        assert result is source_image
 
     def test_fonts_manager_container_compatibility(self, app):
         """Test that fonts_manager works correctly with containers."""
@@ -372,3 +359,49 @@ class TestContainer:
                 container, ("Arial", 12), "linespace"
             )
             assert height == 20
+
+    def test_container_image_gl_surface_initialization(self, app_image_gl):
+        """Test container setup when using image_gl rendering mode."""
+        timeout_at = time.time() + 1.0
+        while app_image_gl.renderer is None and time.time() < timeout_at:
+            time.sleep(0.01)
+
+        container = ntk.Container(app_image_gl, width=300, height=200)
+        container.place(50, 75)
+
+        assert container._image_render_mode is True
+        assert container.surface_id is not None
+        assert container.surface is not None
+        assert container.canvas is None
+        assert container.surface.width == 300
+        assert container.surface.height == 200
+
+    def test_container_image_gl_drawing_marks_renderer_dirty(self, app_image_gl):
+        """Test drawing in image_gl mode updates the container surface and dirty flag."""
+        timeout_at = time.time() + 1.0
+        while app_image_gl.renderer is None and time.time() < timeout_at:
+            time.sleep(0.01)
+
+        container = ntk.Container(app_image_gl, width=220, height=140)
+        container.place(20, 20)
+
+        app_image_gl.renderer.dirty = False
+        rect_id, _ = container.create_rectangle(
+            5, 5, 100, 40, fill="#00ff00ff", border_width=0, outline="#00ff00ff"
+        )
+        assert rect_id in container.surface.objects
+        assert app_image_gl.renderer.needs_redraw() is True
+
+    def test_image_gl_nested_hit_detection(self, app_image_gl):
+        """Test deepest hit detection finds nested container children in image_gl mode."""
+        timeout_at = time.time() + 1.0
+        while app_image_gl.renderer is None and time.time() < timeout_at:
+            time.sleep(0.01)
+
+        container = ntk.Container(app_image_gl, width=300, height=200)
+        container.place(50, 50)
+        button = ntk.Button(container, text="Hit Test", width=120, height=40)
+        button.place(10, 10)
+
+        hit = app_image_gl._find_deepest_hit(app_image_gl.children, 70, 70)
+        assert hit == button

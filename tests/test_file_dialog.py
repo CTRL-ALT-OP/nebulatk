@@ -17,7 +17,13 @@ class TestFileDialog:
     @pytest.fixture
     def app(self):
         """Create a test application window."""
-        window = ntk.Window(title="File Dialog Test", width=800, height=600)
+        window = ntk.Window(
+            title="File Dialog Test",
+            width=800,
+            height=600,
+            render_mode="image_gl",
+            fps=30,
+        )
         yield window
         window.close()
 
