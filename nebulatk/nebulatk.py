@@ -19,6 +19,7 @@ try:
         animation_controller,
         taskbar_manager,
         rendering,
+        file_manager,
     )
 
     # Import Component and _widget classes from widgets.base
@@ -37,6 +38,7 @@ except ImportError:
     import animation_controller
     import taskbar_manager
     import rendering
+    import file_manager
 
     # Import Component and _widget classes from widgets.base
     from widgets.base import Component, _widget, _widget_properties
@@ -45,87 +47,7 @@ except ImportError:
     from widgets import Button, Label, Entry, Frame, Slider, Container
 
 
-# Simple file dialog helper.
-def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
-    """Compatibility wrapper around a platform file picker.
-
-    Args:
-        window (nebulatk.Window): Root window
-        initialdir (str, optional): Initial directory to open to. Defaults to None.
-        mode (str, optional): File open mode. Defaults to "r".
-        filetypes (list, optional): List of filetypes. Format like:
-            [
-                ("Name","*.ext"),
-                ("Name", ("*.ext", "*.ext2"))
-            ]
-            Defaults to [("All files", "*")].
-
-    Returns:
-        file: Open file
-    """
-    window.leave_window(None)
-    file = None
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            class OPENFILENAMEW(ctypes.Structure):
-                _fields_ = [
-                    ("lStructSize", wintypes.DWORD),
-                    ("hwndOwner", wintypes.HWND),
-                    ("hInstance", wintypes.HINSTANCE),
-                    ("lpstrFilter", wintypes.LPCWSTR),
-                    ("lpstrCustomFilter", wintypes.LPWSTR),
-                    ("nMaxCustFilter", wintypes.DWORD),
-                    ("nFilterIndex", wintypes.DWORD),
-                    ("lpstrFile", wintypes.LPWSTR),
-                    ("nMaxFile", wintypes.DWORD),
-                    ("lpstrFileTitle", wintypes.LPWSTR),
-                    ("nMaxFileTitle", wintypes.DWORD),
-                    ("lpstrInitialDir", wintypes.LPCWSTR),
-                    ("lpstrTitle", wintypes.LPCWSTR),
-                    ("Flags", wintypes.DWORD),
-                    ("nFileOffset", wintypes.WORD),
-                    ("nFileExtension", wintypes.WORD),
-                    ("lpstrDefExt", wintypes.LPCWSTR),
-                    ("lCustData", wintypes.LPARAM),
-                    ("lpfnHook", wintypes.LPVOID),
-                    ("lpTemplateName", wintypes.LPCWSTR),
-                    ("pvReserved", wintypes.LPVOID),
-                    ("dwReserved", wintypes.DWORD),
-                    ("FlagsEx", wintypes.DWORD),
-                ]
-
-            filter_chunks = []
-            for label, pattern in filetypes:
-                if isinstance(pattern, (list, tuple)):
-                    pattern = ";".join(pattern)
-                filter_chunks.extend([str(label), str(pattern)])
-            if not filter_chunks:
-                filter_chunks = ["All files", "*.*"]
-            filter_spec = "\0".join(filter_chunks) + "\0\0"
-
-            file_buffer = ctypes.create_unicode_buffer(4096)
-            dialog = OPENFILENAMEW()
-            dialog.lStructSize = ctypes.sizeof(OPENFILENAMEW)
-            dialog.hwndOwner = (
-                window.root.winfo_id() if window.root is not None else None
-            )
-            dialog.lpstrFilter = filter_spec
-            dialog.lpstrFile = file_buffer
-            dialog.nMaxFile = len(file_buffer)
-            dialog.lpstrInitialDir = initialdir
-            dialog.Flags = 0x00000008 | 0x00001000
-
-            if ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(dialog)):
-                selected_path = file_buffer.value
-                if selected_path:
-                    file = open(selected_path, mode)
-        except Exception:
-            file = None
-    window.leave_window(None)
-    return file
+FileDialog = file_manager.FileDialog
 
 
 # Internal window class to implement threading

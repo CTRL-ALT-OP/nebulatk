@@ -7,6 +7,7 @@ from . import bounds_manager
 from . import standard_methods
 from . import animation_controller
 from . import rendering
+from . import file_manager
 
 __all__ = [
     "colors_manager",
@@ -16,4 +17,5 @@ __all__ = [
     "fonts_manager",
     "animation_controller",
     "rendering",
+    "file_manager",
 ]
