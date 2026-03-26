@@ -187,7 +187,6 @@ class PILSurface:
 
     def render(self):
         frame = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(frame)
         for _id in self._z_order:
             obj = self.objects.get(_id)
             if obj is None or obj.state == "hidden":
@@ -199,19 +198,27 @@ class PILSurface:
                     y = obj.data["y"]
                     frame.alpha_composite(img, (x, y))
             elif obj.kind == "rectangle":
-                draw.rectangle(
+                # Draw shapes/text on an intermediate transparent layer, then
+                # alpha composite it. Drawing directly onto RGBA can replace
+                # destination pixels instead of blending with them.
+                layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+                layer_draw = ImageDraw.Draw(layer)
+                layer_draw.rectangle(
                     [obj.data["x1"], obj.data["y1"], obj.data["x2"], obj.data["y2"]],
                     fill=obj.data["fill"],
                     outline=obj.data["outline"],
                     width=obj.data["border_width"],
                 )
+                frame.alpha_composite(layer)
             elif obj.kind == "text":
+                layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+                layer_draw = ImageDraw.Draw(layer)
                 try:
                     font_size = max(1, int(obj.data["font"][1]))
                     text_font = ImageFont.truetype("arial.ttf", font_size)
                 except Exception:
                     text_font = ImageFont.load_default()
-                draw.text(
+                layer_draw.text(
                     (obj.data["x"], obj.data["y"]),
                     obj.data["text"],
                     fill=obj.data["fill"],
@@ -220,6 +227,7 @@ class PILSurface:
                         obj.data["anchor"], "mm"
                     ),
                 )
+                frame.alpha_composite(layer)
         self.dirty = False
         return frame
 
@@ -1116,7 +1124,11 @@ class OpenGLImageDisplay:
         framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.root.handle)
         if framebuffer_width <= 0 or framebuffer_height <= 0:
             return
-        GL.glViewport(0, 0, framebuffer_width, framebuffer_height)
+        # Keep content at a fixed pixel size and anchor to top-left.
+        # Window resizing should change only the visible/canvas area, not scale content.
+        viewport_x = 0
+        viewport_y = framebuffer_height - self.height
+        GL.glViewport(viewport_x, viewport_y, self.width, self.height)
         GL.glClearColor(0.0, 0.0, 0.0, 0.0)
         GL.glClear(GL.GL_COLOR_BUFFER_BIT)
         if self._frame_rgba is None or self._texture_id is None:

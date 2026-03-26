@@ -600,19 +600,9 @@ class _window_internal(threading.Thread, Component):
         def _apply_resize():
             # Update the window geometry
             self.root.geometry(f"{self.width}x{self.height}")
-
-            # If canvas dimensions should match window, update those too
-            self.canvas_width = self.width
-            self.canvas_height = self.height
-            self.display.configure(width=self.width, height=self.height)
-            self.renderer.width = self.width
-            self.renderer.height = self.height
-            self.renderer.root_surface.width = self.width
-            self.renderer.root_surface.height = self.height
+            # Keep renderer/canvas dimensions fixed so window resize does not
+            # scale existing content.
             self.renderer.dirty = True
-
-            # Update all children to match new dimensions
-            self._update_children()
 
         self._execute_in_window_thread(_apply_resize)
 
