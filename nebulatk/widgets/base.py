@@ -1,5 +1,3 @@
-import tkinter as tk
-
 # Import from parent module
 try:
     from .. import (
@@ -775,7 +773,7 @@ class _widget(_widget_properties, Component):
             try:
                 clipboard_text = self.master.root.clipboard_get()
                 delete_selection()
-            except tk.TclError:  # Empty clipboard
+            except Exception:
                 self._selection_start = self._selection_end = self.cursor_position
                 return
 

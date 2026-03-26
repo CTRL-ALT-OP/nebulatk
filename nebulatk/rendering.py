@@ -1,5 +1,8 @@
+import heapq
+import itertools
+import re
+import threading
 import time
-import tkinter as tk
 from dataclasses import dataclass
 
 from PIL import Image as PILImage
@@ -7,11 +10,12 @@ from PIL import ImageDraw
 from PIL import ImageFont
 
 try:
-    from pyopengltk import OpenGLFrame
+    import glfw
     from OpenGL import GL
 except Exception:
-    OpenGLFrame = None
+    glfw = None
     GL = None
+
 
 def _to_rgba(color):
     if color is None:
@@ -78,7 +82,15 @@ class PILSurface:
         return _id, image
 
     def create_rectangle(
-        self, x, y, width, height=0, fill=None, border_width=0, outline=None, state="normal"
+        self,
+        x,
+        y,
+        width,
+        height=0,
+        fill=None,
+        border_width=0,
+        outline=None,
+        state="normal",
     ):
         _id = self._new_id()
         self.objects[_id] = RenderObject(
@@ -228,7 +240,9 @@ class PILImageRenderer:
         self.dirty = True
         return surface_id
 
-    def update_container_surface(self, surface_id, x=None, y=None, width=None, height=None):
+    def update_container_surface(
+        self, surface_id, x=None, y=None, width=None, height=None
+    ):
         surface = self.container_surfaces.get(surface_id)
         if not surface:
             return
@@ -275,83 +289,399 @@ class PILImageRenderer:
         return self._last_frame
 
 
-class OpenGLImageDisplay:
-    def __init__(self, root, width, height):
-        self._enabled = OpenGLFrame is not None and GL is not None
-        self._texture_id = None
-        self._frame_rgba = None
-        self.width = int(width)
-        self.height = int(height)
+@dataclass
+class NativeEvent:
+    x: int = 0
+    y: int = 0
+    char: str = ""
+    keysym: str = ""
 
-        if not self._enabled:
-            raise RuntimeError(
-                "OpenGL backend unavailable. Install/enable PyOpenGL and pyopengltk."
-            )
 
-        parent = self
+_GLFW_LOCK = threading.Lock()
+_GLFW_REFCOUNT = 0
 
-        class _Frame(OpenGLFrame):
-            def initgl(self_inner):
-                GL.glDisable(GL.GL_DEPTH_TEST)
-                GL.glEnable(GL.GL_TEXTURE_2D)
-                parent._texture_id = GL.glGenTextures(1)
-                GL.glBindTexture(GL.GL_TEXTURE_2D, parent._texture_id)
-                GL.glTexParameteri(
-                    GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR
-                )
-                GL.glTexParameteri(
-                    GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR
-                )
 
-            def redraw(self_inner):
-                GL.glViewport(0, 0, parent.width, parent.height)
-                GL.glClearColor(0, 0, 0, 0)
-                GL.glClear(GL.GL_COLOR_BUFFER_BIT)
-                if parent._frame_rgba is None:
-                    return
-                GL.glBindTexture(GL.GL_TEXTURE_2D, parent._texture_id)
-                GL.glTexImage2D(
-                    GL.GL_TEXTURE_2D,
-                    0,
-                    GL.GL_RGBA,
-                    parent.width,
-                    parent.height,
-                    0,
-                    GL.GL_RGBA,
-                    GL.GL_UNSIGNED_BYTE,
-                    parent._frame_rgba,
-                )
-                GL.glBegin(GL.GL_QUADS)
-                GL.glTexCoord2f(0, 1)
-                GL.glVertex2f(-1, -1)
-                GL.glTexCoord2f(1, 1)
-                GL.glVertex2f(1, -1)
-                GL.glTexCoord2f(1, 0)
-                GL.glVertex2f(1, 1)
-                GL.glTexCoord2f(0, 0)
-                GL.glVertex2f(-1, 1)
-                GL.glEnd()
+def _glfw_init_ref():
+    global _GLFW_REFCOUNT
+    with _GLFW_LOCK:
+        if _GLFW_REFCOUNT == 0:
+            if glfw is None or not glfw.init():
+                return False
+        _GLFW_REFCOUNT += 1
+        return True
 
-        self.frame = _Frame(root, width=width, height=height)
-        self.frame.pack(fill="both", expand=True)
-        self.canvas = self.frame
+
+def _glfw_terminate_ref():
+    global _GLFW_REFCOUNT
+    with _GLFW_LOCK:
+        if _GLFW_REFCOUNT <= 0:
+            return
+        _GLFW_REFCOUNT -= 1
+        if _GLFW_REFCOUNT == 0 and glfw is not None:
+            glfw.terminate()
+
+
+class NativeGLWindow:
+    """GLFW-backed window exposing a tkinter-like scheduling/event API."""
+
+    def __init__(
+        self, width, height, title="ntk", resizable=(True, True), override=False
+    ):
+        if glfw is None:
+            raise RuntimeError("OpenGL backend unavailable. Install/enable glfw + PyOpenGL.")
+        if not _glfw_init_ref():
+            raise RuntimeError("Failed to initialize GLFW.")
+
+        self._closed = False
+        self._running = False
+        self._bindings = {}
+        self._protocol_handlers = {}
+        self._draw_callback = None
+        self._timers = []
+        self._timer_counter = itertools.count()
+        self._cancelled_timers = set()
+        self._timers_lock = threading.Lock()
+        self._clipboard_fallback = ""
+        self._event_lock = threading.Lock()
+        self._mouse_x = 0
+        self._mouse_y = 0
+        self._resizable = tuple(resizable)
+        self._owner_thread_id = threading.get_ident()
+
+        glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
+        glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
+        glfw.window_hint(
+            glfw.RESIZABLE, glfw.TRUE if (self._resizable[0] or self._resizable[1]) else glfw.FALSE
+        )
+        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
+        glfw.window_hint(glfw.DECORATED, glfw.FALSE if override else glfw.TRUE)
+
+        self._window = glfw.create_window(int(width), int(height), str(title), None, None)
+        if not self._window:
+            _glfw_terminate_ref()
+            raise RuntimeError("Failed to create GLFW window.")
+
+        glfw.make_context_current(self._window)
+        glfw.swap_interval(0)
+
+        glfw.set_window_close_callback(self._window, self._on_close_requested)
+        glfw.set_mouse_button_callback(self._window, self._on_mouse_button)
+        glfw.set_cursor_pos_callback(self._window, self._on_cursor_pos)
+        glfw.set_cursor_enter_callback(self._window, self._on_cursor_enter)
+        glfw.set_key_callback(self._window, self._on_key)
+        glfw.set_char_callback(self._window, self._on_char)
+
+    @property
+    def handle(self):
+        return self._window
+
+    def bind(self, key, command):
+        self._bindings.setdefault(key, []).append(command)
+        return command
+
+    def protocol(self, name, command):
+        self._protocol_handlers[name] = command
+
+    def set_draw_callback(self, callback):
+        self._draw_callback = callback
+
+    def _dispatch(self, key, event):
+        for callback in self._bindings.get(key, []):
+            callback(event)
+
+    def _on_close_requested(self, _window):
+        callback = self._protocol_handlers.get("WM_DELETE_WINDOW")
+        if callback is not None:
+            callback()
+        else:
+            self.quit()
+
+    def _on_cursor_pos(self, _window, x, y):
+        with self._event_lock:
+            self._mouse_x, self._mouse_y = int(x), int(y)
+            event = NativeEvent(x=int(x), y=int(y))
+        self._dispatch("<Motion>", event)
+
+    def _on_cursor_enter(self, _window, entered):
+        if not entered:
+            with self._event_lock:
+                event = NativeEvent(x=self._mouse_x, y=self._mouse_y)
+            self._dispatch("<Leave>", event)
+
+    def _on_mouse_button(self, _window, button, action, _mods):
+        with self._event_lock:
+            event = NativeEvent(x=self._mouse_x, y=self._mouse_y)
+        if button == glfw.MOUSE_BUTTON_LEFT and action == glfw.PRESS:
+            self._dispatch("<Button-1>", event)
+        elif button == glfw.MOUSE_BUTTON_LEFT and action == glfw.RELEASE:
+            self._dispatch("<ButtonRelease-1>", event)
+
+    def _on_char(self, _window, codepoint):
+        # Character callback is kept for future direct text handling.
+        self._clipboard_fallback = self._clipboard_fallback
+
+    def _key_name(self, key):
+        special = {
+            glfw.KEY_BACKSPACE: "BackSpace",
+            glfw.KEY_DELETE: "Delete",
+            glfw.KEY_LEFT: "Left",
+            glfw.KEY_RIGHT: "Right",
+            glfw.KEY_HOME: "Home",
+            glfw.KEY_END: "End",
+            glfw.KEY_LEFT_SHIFT: "Shift_L",
+            glfw.KEY_RIGHT_SHIFT: "Shift_R",
+            glfw.KEY_LEFT_CONTROL: "Control_L",
+            glfw.KEY_RIGHT_CONTROL: "Control_R",
+            glfw.KEY_LEFT_SUPER: "Meta_L",
+            glfw.KEY_RIGHT_SUPER: "Meta_R",
+        }
+        if key in special:
+            return special[key]
+        if glfw.KEY_A <= key <= glfw.KEY_Z:
+            return chr(ord("a") + (key - glfw.KEY_A))
+        name = glfw.get_key_name(key, 0)
+        return name if name is not None else ""
+
+    def _on_key(self, _window, key, scancode, action, _mods):
+        keysym = self._key_name(key)
+        char = glfw.get_key_name(key, scancode) or ""
+        with self._event_lock:
+            event = NativeEvent(x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char)
+        if action in (glfw.PRESS, glfw.REPEAT):
+            self._dispatch("<Key>", event)
+        elif action == glfw.RELEASE:
+            self._dispatch("<KeyRelease>", event)
 
     @property
     def available(self):
-        return self._enabled
+        return self._window is not None
+
+    def after(self, ms, callback):
+        timer_id = f"after#{next(self._timer_counter)}"
+        due = time.time() + (max(0, int(ms)) / 1000.0)
+        with self._timers_lock:
+            heapq.heappush(self._timers, (due, next(self._timer_counter), timer_id, callback))
+        glfw.post_empty_event()
+        return timer_id
+
+    def after_cancel(self, timer_id):
+        with self._timers_lock:
+            self._cancelled_timers.add(timer_id)
+
+    def _process_timers(self):
+        now = time.time()
+        ready = []
+        with self._timers_lock:
+            while self._timers and self._timers[0][0] <= now:
+                ready.append(heapq.heappop(self._timers))
+        for _, _, timer_id, callback in ready:
+            if timer_id in self._cancelled_timers:
+                self._cancelled_timers.discard(timer_id)
+                continue
+            callback()
+
+    def geometry(self, geometry):
+        if self._window is None:
+            return
+        match = re.match(r"^\s*(\d+)x(\d+)(?:\+(-?\d+)\+(-?\d+))?\s*$", geometry)
+        if not match:
+            return
+        width = int(match.group(1))
+        height = int(match.group(2))
+        glfw.set_window_size(self._window, width, height)
+        if match.group(3) is not None and match.group(4) is not None:
+            glfw.set_window_pos(self._window, int(match.group(3)), int(match.group(4)))
+
+    def title(self, value):
+        if self._window is not None:
+            glfw.set_window_title(self._window, str(value))
+
+    def resizable(self, can_resize_x, can_resize_y):
+        self._resizable = (bool(can_resize_x), bool(can_resize_y))
+        glfw.set_window_attrib(
+            self._window, glfw.RESIZABLE, glfw.TRUE if any(self._resizable) else glfw.FALSE
+        )
+
+    def overrideredirect(self, override):
+        glfw.set_window_attrib(
+            self._window, glfw.DECORATED, glfw.FALSE if override else glfw.TRUE
+        )
+
+    def wm_attributes(self, *_args, **_kwargs):
+        return None
+
+    def lift(self):
+        if self._window is not None:
+            glfw.focus_window(self._window)
+
+    def update(self):
+        if self._window is None:
+            return
+        # External callers may invoke update() from non-window threads.
+        # Keep this method GL-safe by avoiding draw calls here.
+        glfw.post_empty_event()
+        if threading.get_ident() == self._owner_thread_id:
+            glfw.poll_events()
+            self._process_timers()
+
+    def update_idletasks(self):
+        self._process_timers()
+
+    def withdraw(self):
+        if self._window is not None:
+            glfw.hide_window(self._window)
+
+    def deiconify(self):
+        if self._window is not None:
+            glfw.show_window(self._window)
+
+    def clipboard_clear(self):
+        self._clipboard_fallback = ""
+        if self._window is not None:
+            glfw.set_clipboard_string(self._window, "")
+
+    def clipboard_append(self, value):
+        text = str(value)
+        self._clipboard_fallback = text
+        if self._window is not None:
+            glfw.set_clipboard_string(self._window, text)
+
+    def clipboard_get(self):
+        if self._window is None:
+            return self._clipboard_fallback
+        value = glfw.get_clipboard_string(self._window)
+        if value is None:
+            if self._clipboard_fallback == "":
+                raise RuntimeError("Clipboard is empty")
+            return self._clipboard_fallback
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="ignore")
+        return value
+
+    def winfo_id(self):
+        if self._window is None:
+            return 0
+        if hasattr(glfw, "get_win32_window"):
+            return glfw.get_win32_window(self._window)
+        return 0
+
+    def mainloop(self):
+        if self._window is None:
+            return
+        self._running = True
+        while self._running and not glfw.window_should_close(self._window):
+            glfw.wait_events_timeout(0.001)
+            self._process_timers()
+            if self._draw_callback is not None:
+                glfw.make_context_current(self._window)
+                self._draw_callback()
+                glfw.swap_buffers(self._window)
+        self.destroy()
+
+    def quit(self):
+        self._running = False
+        if self._window is not None:
+            glfw.set_window_should_close(self._window, True)
+            glfw.post_empty_event()
+
+    def destroy(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._window is not None:
+            glfw.destroy_window(self._window)
+            self._window = None
+        _glfw_terminate_ref()
+
+
+class OpenGLImageDisplay:
+    def __init__(self, root, width, height):
+        self._enabled = glfw is not None and GL is not None
+        self._texture_id = None
+        self._frame_rgba = None
+        self._texture_size = (0, 0)
+        self.width = int(width)
+        self.height = int(height)
+        self.root = root
+        self.canvas = root
+
+        if not self._enabled:
+            raise RuntimeError(
+                "OpenGL backend unavailable. Install/enable glfw + PyOpenGL."
+            )
+        self._init_gl()
+
+    def _init_gl(self):
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glEnable(GL.GL_TEXTURE_2D)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        self._texture_id = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
 
     def show_frame(self, frame):
-        self._frame_rgba = frame.convert("RGBA").tobytes("raw", "RGBA")
-        # Use the frame display pipeline so the GL context is made current
-        # before invoking user redraw logic.
-        if getattr(self.frame, "context_created", False):
-            self.frame.after(0, self.frame._display)
+        rgba = frame.convert("RGBA")
+        self.width, self.height = rgba.size
+        self._frame_rgba = rgba.tobytes("raw", "RGBA")
+
+    def draw(self):
+        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.root.handle)
+        if framebuffer_width <= 0 or framebuffer_height <= 0:
+            return
+        GL.glViewport(0, 0, framebuffer_width, framebuffer_height)
+        GL.glClearColor(0.0, 0.0, 0.0, 0.0)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        if self._frame_rgba is None or self._texture_id is None:
+            return
+
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
+        GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+
+        if self._texture_size != (self.width, self.height):
+            GL.glTexImage2D(
+                GL.GL_TEXTURE_2D,
+                0,
+                GL.GL_RGBA,
+                self.width,
+                self.height,
+                0,
+                GL.GL_RGBA,
+                GL.GL_UNSIGNED_BYTE,
+                self._frame_rgba,
+            )
+            self._texture_size = (self.width, self.height)
+        else:
+            GL.glTexSubImage2D(
+                GL.GL_TEXTURE_2D,
+                0,
+                0,
+                0,
+                self.width,
+                self.height,
+                GL.GL_RGBA,
+                GL.GL_UNSIGNED_BYTE,
+                self._frame_rgba,
+            )
+
+        GL.glBegin(GL.GL_QUADS)
+        GL.glTexCoord2f(0, 1)
+        GL.glVertex2f(-1, -1)
+        GL.glTexCoord2f(1, 1)
+        GL.glVertex2f(1, -1)
+        GL.glTexCoord2f(1, 0)
+        GL.glVertex2f(1, 1)
+        GL.glTexCoord2f(0, 0)
+        GL.glVertex2f(-1, 1)
+        GL.glEnd()
 
     def configure(self, width=None, height=None):
         if width is not None:
             self.width = int(width)
-            self.frame.configure(width=self.width)
         if height is not None:
             self.height = int(height)
-            self.frame.configure(height=self.height)
-
+        if self.root is not None:
+            glfw.set_window_size(self.root.handle, self.width, self.height)

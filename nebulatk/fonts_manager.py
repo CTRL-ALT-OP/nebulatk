@@ -1,5 +1,7 @@
 import math
-from tkinter import font as tkfont, Tk
+from functools import lru_cache
+
+from PIL import ImageFont
 
 # Detect Windows
 ctypes_available = True
@@ -51,6 +53,33 @@ class Font:
             self.font = font
 
 
+def _normalize_font(font):
+    if len(font) < 3:
+        return (font[0], font[1], "normal")
+    return font
+
+
+@lru_cache(maxsize=256)
+def _load_font(family, size):
+    size = max(1, int(size))
+    candidates = [family]
+    if not family.lower().endswith((".ttf", ".otf", ".ttc")):
+        candidates.extend(
+            [
+                f"{family}.ttf",
+                f"{family}.otf",
+                "arial.ttf",
+                "DejaVuSans.ttf",
+            ]
+        )
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
 def measure_text(root, font, text):
     """Measure the width of text with the given font.
 
@@ -62,22 +91,12 @@ def measure_text(root, font, text):
     Returns:
         int: The width of the text in pixels
     """
-    # Generate full length font tuple
-    if len(font) < 3:
-        font = (font[0], font[1], tkfont.NORMAL)
-
-    if not isinstance(root, Tk):
-        # Handle Container objects - access the window's root
-        if hasattr(root, "_window"):
-            # For nested containers, traverse to the top-level window
-            current = root._window
-            while hasattr(current, "_window") and current._window != current:
-                current = current._window
-            root = current.root
-        else:
-            root = root.root
-
-    return tkfont.Font(root, font=font).measure(text)
+    font = _normalize_font(font)
+    pil_font = _load_font(font[0], font[1])
+    if not text:
+        return 0
+    left, _, right, _ = pil_font.getbbox(text)
+    return int(right - left)
 
 
 def get_font_metrics(root, font, attr):
@@ -91,22 +110,15 @@ def get_font_metrics(root, font, attr):
     Returns:
         int: The value of the requested font metric
     """
-    # Generate full length font tuple
-    if len(font) < 3:
-        font = (font[0], font[1], tkfont.NORMAL)
-
-    if not isinstance(root, Tk):
-        # Handle Container objects - access the window's root
-        if hasattr(root, "_window"):
-            # For nested containers, traverse to the top-level window
-            current = root._window
-            while hasattr(current, "_window") and current._window != current:
-                current = current._window
-            root = current.root
-        else:
-            root = root.root
-
-    return tkfont.Font(root, font=font).metrics(attr)
+    font = _normalize_font(font)
+    pil_font = _load_font(font[0], font[1])
+    ascent, descent = pil_font.getmetrics()
+    metrics = {
+        "ascent": int(ascent),
+        "descent": int(descent),
+        "linespace": int(ascent + descent),
+    }
+    return metrics.get(attr, metrics["linespace"])
 
 
 def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> bool:
@@ -182,9 +194,7 @@ def get_max_font_size(root, font, width, height, text):
     size2 = 1
     prev_size2 = 0
 
-    # Generate full length font tuple
-    if len(font) < 3:
-        font = (font[0], font[1], tkfont.NORMAL)
+    font = _normalize_font(font)
 
     # Generate starting width of text given the font size
     curr_width = measure_text(root, (font[0], size, font[2]), text)
@@ -224,9 +234,7 @@ def get_min_button_size(root, font, text):
         height (int): The minimum height of the button
     """
 
-    # Generate full length font tuple
-    if len(font) < 3:
-        font = (font[0], font[1], tkfont.NORMAL)
+    font = _normalize_font(font)
 
     # Minimum width is 110% of the width of the given font and text
     width = int(math.ceil(measure_text(root, font, text) / 0.9))
@@ -251,9 +259,7 @@ def get_max_length(root, text, font, width, end=0):
         _type_: _description_
     """
 
-    # Generate full length font tuple
-    if len(font) < 3:
-        font = (font[0], font[1], tkfont.NORMAL)
+    font = _normalize_font(font)
 
     # Initialize length of slice to be the maximum length of the text
     length = len(text)

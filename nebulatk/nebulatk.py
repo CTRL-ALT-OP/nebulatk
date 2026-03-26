@@ -1,11 +1,8 @@
-# Import tkinter and filedialog
 import sys
 import threading
-import tkinter as tk
 
 # Import python standard packages
 from time import sleep
-from tkinter import filedialog as tkfile_dialog
 
 
 # Importing from another file works differently than if running this file directly for some reason.
@@ -47,10 +44,9 @@ except ImportError:
     from widgets import Button, Label, Entry, Frame, Slider, Container
 
 
-# Our implementation of tkinter's file_dialog.
-# This mostly just exists so that the user doesn't have to import nebulatk and tkinter
+# Simple file dialog helper.
 def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
-    """Identical to tkinter.FileDialog
+    """Compatibility wrapper around a platform file picker.
 
     Args:
         window (nebulatk.Window): Root window
@@ -67,17 +63,70 @@ def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))
         file: Open file
     """
     window.leave_window(None)
-    file = tkfile_dialog.askopenfile(
-        initialdir=initialdir,
-        mode=mode,
-        filetypes=filetypes,
-    )
+    file = None
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class OPENFILENAMEW(ctypes.Structure):
+                _fields_ = [
+                    ("lStructSize", wintypes.DWORD),
+                    ("hwndOwner", wintypes.HWND),
+                    ("hInstance", wintypes.HINSTANCE),
+                    ("lpstrFilter", wintypes.LPCWSTR),
+                    ("lpstrCustomFilter", wintypes.LPWSTR),
+                    ("nMaxCustFilter", wintypes.DWORD),
+                    ("nFilterIndex", wintypes.DWORD),
+                    ("lpstrFile", wintypes.LPWSTR),
+                    ("nMaxFile", wintypes.DWORD),
+                    ("lpstrFileTitle", wintypes.LPWSTR),
+                    ("nMaxFileTitle", wintypes.DWORD),
+                    ("lpstrInitialDir", wintypes.LPCWSTR),
+                    ("lpstrTitle", wintypes.LPCWSTR),
+                    ("Flags", wintypes.DWORD),
+                    ("nFileOffset", wintypes.WORD),
+                    ("nFileExtension", wintypes.WORD),
+                    ("lpstrDefExt", wintypes.LPCWSTR),
+                    ("lCustData", wintypes.LPARAM),
+                    ("lpfnHook", wintypes.LPVOID),
+                    ("lpTemplateName", wintypes.LPCWSTR),
+                    ("pvReserved", wintypes.LPVOID),
+                    ("dwReserved", wintypes.DWORD),
+                    ("FlagsEx", wintypes.DWORD),
+                ]
+
+            filter_chunks = []
+            for label, pattern in filetypes:
+                if isinstance(pattern, (list, tuple)):
+                    pattern = ";".join(pattern)
+                filter_chunks.extend([str(label), str(pattern)])
+            if not filter_chunks:
+                filter_chunks = ["All files", "*.*"]
+            filter_spec = "\0".join(filter_chunks) + "\0\0"
+
+            file_buffer = ctypes.create_unicode_buffer(4096)
+            dialog = OPENFILENAMEW()
+            dialog.lStructSize = ctypes.sizeof(OPENFILENAMEW)
+            dialog.hwndOwner = window.root.winfo_id() if window.root is not None else None
+            dialog.lpstrFilter = filter_spec
+            dialog.lpstrFile = file_buffer
+            dialog.nMaxFile = len(file_buffer)
+            dialog.lpstrInitialDir = initialdir
+            dialog.Flags = 0x00000008 | 0x00001000
+
+            if ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(dialog)):
+                selected_path = file_buffer.value
+                if selected_path:
+                    file = open(selected_path, mode)
+        except Exception:
+            file = None
     window.leave_window(None)
     return file
 
 
 # Internal window class to implement threading
-# NOTE: Threading and tcl do not combine well, so we have to do a lot of stuff ourselves and be careful that all modifications to the tcl windows are done in the same thread
+# NOTE: The window loop runs in its own thread.
 class _window_internal(threading.Thread, Component):
 
     def __init__(
@@ -143,6 +192,7 @@ class _window_internal(threading.Thread, Component):
 
         # Initialize rest of variables
         self.running = True
+        self._startup_error = None
         self.closing_command = closing_command
 
         self.defaults = defaults.new()
@@ -359,7 +409,8 @@ class _window_internal(threading.Thread, Component):
         # stop any running animations
         self.close_animations()
 
-        self.root.after(200, self.root.quit)
+        if self.root is not None:
+            self.root.after(200, self.root.quit)
 
         # wait up to a second for the thread to finish
         self.join(timeout=0.1)
@@ -375,7 +426,8 @@ class _window_internal(threading.Thread, Component):
             anim.stop()
             if anim.thread is not None:
                 while anim.thread.is_alive():
-                    self.root.update()
+                    if self.root is not None:
+                        self.root.update()
                     sleep(0.01)
                 anim.thread.join(timeout=1)
 
@@ -390,46 +442,57 @@ class _window_internal(threading.Thread, Component):
 
     # Main method
     def run(self):
-        # Create window
-        self.root = tk.Tk()
-        self.renderer = rendering.PILImageRenderer(
-            self.canvas_width, self.canvas_height, fps=self.fps
-        )
-        self.display = rendering.OpenGLImageDisplay(
-            self.root, self.canvas_width, self.canvas_height
-        )
-        self.canvas = self.display.canvas
+        try:
+            # Create window
+            self.root = rendering.NativeGLWindow(
+                self.width,
+                self.height,
+                title=self.title,
+                resizable=self.resizable,
+                override=self.override,
+            )
+            self.renderer = rendering.PILImageRenderer(
+                self.canvas_width, self.canvas_height, fps=self.fps
+            )
+            self.display = rendering.OpenGLImageDisplay(
+                self.root, self.canvas_width, self.canvas_height
+            )
+            self.root.set_draw_callback(self.display.draw)
+            self.canvas = self.display.canvas
 
-        # Initialize window
-        self.root.geometry(f"{self.width}x{self.height}")
+            # Initialize window
+            self.root.geometry(f"{self.width}x{self.height}")
 
-        self.root.title(self.title)
+            self.root.title(self.title)
 
-        self.root.resizable(self.resizable[0], self.resizable[1])
+            self.root.resizable(self.resizable[0], self.resizable[1])
 
-        self.root.overrideredirect(self.override)
+            self.root.overrideredirect(self.override)
 
-        def close():
+            def close():
+                self.running = False
+                self.close_animations()
+                try:
+                    self.root.quit()
+                except Exception as e:
+                    print(f"exception{e}")
+                if self.closing_command is not None:
+                    self.closing_command()
+
+            # Bind events to our new event handlers
+            self.bind("<Button-1>", self.click)
+            self.bind("<ButtonRelease-1>", self.click_up)
+            self.bind("<Key>", self.typing)
+            self.bind("<KeyRelease>", self.typing_up)
+            self.root.protocol("WM_DELETE_WINDOW", close)
+            self.bind("<Motion>", self.hover)
+            self.bind("<Leave>", self.leave_window)
+
+            self._render_tick()
+            self.root.mainloop()
+        except Exception as exc:
+            self._startup_error = exc
             self.running = False
-            self.close_animations()
-            try:
-                self.root.quit()
-            except Exception as e:
-                print(f"exception{e}")
-            if self.closing_command is not None:
-                self.closing_command()
-
-        # Bind events to our new event handlers
-        self.bind("<Button-1>", self.click)
-        self.bind("<ButtonRelease-1>", self.click_up)
-        self.bind("<Key>", self.typing)
-        self.bind("<KeyRelease>", self.typing_up)
-        self.root.protocol("WM_DELETE_WINDOW", close)
-        self.bind("<Motion>", self.hover)
-        self.bind("<Leave>", self.leave_window)
-
-        self._render_tick()
-        self.root.mainloop()
 
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly:
@@ -616,8 +679,16 @@ def Window(
     canvas.start()
 
     # Wait for window to be created, as it == in a separate thread and not blocking this thread
-    while canvas.root is None:
+    while canvas.root is None and canvas._startup_error is None and canvas.is_alive():
         sleep(0.1)
+
+    if canvas._startup_error is not None:
+        raise RuntimeError(
+            f"Failed to initialize OpenGL window backend: {canvas._startup_error}"
+        ) from canvas._startup_error
+
+    if canvas.root is None:
+        raise RuntimeError("Window thread exited before creating a render window.")
 
     # Return the window
     return canvas
