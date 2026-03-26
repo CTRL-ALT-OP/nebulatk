@@ -48,8 +48,8 @@ class Container(Component):
 
         while self._window.renderer is None:
             sleep(0.001)
-        self.surface_id = self._window.renderer.create_container_surface(width, height)
-        self.surface = self._window.renderer.container_surfaces[self.surface_id]
+        self.surface_id = self._window.create_container_surface(width, height)
+        self.surface = None
 
         self.initialized = True
 
@@ -160,7 +160,7 @@ class Container(Component):
         pass
 
     def create_image(self, x, y, image, state="normal"):
-        return self.surface.create_image(x, y, image, state=state)
+        return self._window.container_create_image(self.surface_id, x, y, image, state=state)
 
     def create_rectangle(
         self,
@@ -173,7 +173,8 @@ class Container(Component):
         outline=None,
         state="normal",
     ):
-        return self.surface.create_rectangle(
+        return self._window.container_create_rectangle(
+            self.surface_id,
             x,
             y,
             width,
@@ -187,7 +188,8 @@ class Container(Component):
     def create_text(
         self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
-        return self.surface.create_text(
+        return self._window.container_create_text(
+            self.surface_id,
             x,
             y,
             text=text,
@@ -199,25 +201,20 @@ class Container(Component):
         )
 
     def move(self, _object, x, y):
-        self.surface.move(_object, x, y)
-        self._window.renderer.dirty = True
+        self._window.container_move(self.surface_id, _object, x, y)
 
     def object_place(self, _object, x, y):
-        self.surface.object_place(_object, x - self.x, y - self.y)
-        self._window.renderer.dirty = True
+        self._window.container_object_place(self.surface_id, _object, x - self.x, y - self.y)
 
     def delete(self, _object):
-        self.surface.delete(_object)
-        self._window.renderer.dirty = True
+        self._window.container_delete(self.surface_id, _object)
 
     def change_state(self, _object, state):
-        self.surface.change_state(_object, state)
-        self._window.renderer.dirty = True
+        self._window.container_change_state(self.surface_id, _object, state)
 
     def configure(self, _object=None, **kwargs):
         if _object is not None:
-            self.surface.configure(_object, **kwargs)
-            self._window.renderer.dirty = True
+            self._window.container_configure(self.surface_id, _object, **kwargs)
 
     def replicate_object(self, child):
         return
@@ -231,10 +228,9 @@ class Container(Component):
     def place(self, x, y):
         self._container_x = x
         self._container_y = y
-        self._window.renderer.update_container_surface(
+        self._window.update_container_surface(
             self.surface_id, x=x, y=y, width=self.width, height=self.height
         )
-        self._window.renderer.dirty = True
         return self
 
     def _update_background_positions(self):

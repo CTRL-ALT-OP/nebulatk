@@ -1,5 +1,6 @@
 import sys
 import threading
+import queue as std_queue
 
 # Import python standard packages
 from time import sleep
@@ -201,6 +202,10 @@ class _window_internal(threading.Thread, Component):
 
         self._taskbar_manager = None
         self._render_batch_depth = 0
+        self._window_thread_id = None
+        self._ui_queue = std_queue.Queue()
+        self._ui_queue_signal_scheduled = False
+        self._ui_queue_lock = threading.Lock()
 
     @property
     def taskbar_manager(self):
@@ -347,58 +352,125 @@ class _window_internal(threading.Thread, Component):
     # NOTE: CREATION HANDLERS
     # These are necessary so that threading works properly with tcl
 
+    def _is_window_thread(self):
+        return threading.get_ident() == self._window_thread_id
+
+    def _execute_in_window_thread(self, callback, wait=True):
+        if self._is_window_thread() or self.root is None:
+            return callback()
+
+        done = threading.Event()
+        result = {"value": None, "error": None}
+        self._ui_queue.put((callback, done, result))
+        self._signal_ui_queue()
+
+        if not wait:
+            return None
+        done.wait()
+        if result["error"] is not None:
+            raise result["error"]
+        return result["value"]
+
+    def _signal_ui_queue(self):
+        if self.root is None:
+            return
+        with self._ui_queue_lock:
+            if self._ui_queue_signal_scheduled:
+                return
+            self._ui_queue_signal_scheduled = True
+        self.root.after(0, self._drain_ui_queue)
+
+    def _drain_ui_queue(self):
+        while True:
+            try:
+                callback, done, result = self._ui_queue.get_nowait()
+            except std_queue.Empty:
+                break
+            try:
+                result["value"] = callback()
+            except Exception as exc:
+                result["error"] = exc
+            finally:
+                done.set()
+        with self._ui_queue_lock:
+            self._ui_queue_signal_scheduled = False
+        if not self._ui_queue.empty() and self.root is not None:
+            self._signal_ui_queue()
+
     # Wrapper for canvas.create_image method
     def create_image(self, x, y, image, state="normal"):
-        return self.renderer.root_surface.create_image(x, y, image, state=state)
+        return self._execute_in_window_thread(
+            lambda: self.renderer.root_surface.create_image(x, y, image, state=state)
+        )
 
     # Wrapper for canvas.create_rectangle method
     def create_rectangle(
         self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
     ):
-        return self.renderer.root_surface.create_rectangle(
-            x,
-            y,
-            widt,
-            height,
-            fill=fill,
-            border_width=border_width,
-            outline=outline,
-            state=state,
+        return self._execute_in_window_thread(
+            lambda: self.renderer.root_surface.create_rectangle(
+                x,
+                y,
+                widt,
+                height,
+                fill=fill,
+                border_width=border_width,
+                outline=outline,
+                state=state,
+            )
         )
 
     # Wrapper for canvas.create_text method
     def create_text(
         self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
     ):
-        return self.renderer.root_surface.create_text(
-            x,
-            y,
-            text=text,
-            font=font,
-            fill=fill,
-            anchor=anchor,
-            state=state,
-            angle=angle,
+        return self._execute_in_window_thread(
+            lambda: self.renderer.root_surface.create_text(
+                x,
+                y,
+                text=text,
+                font=font,
+                fill=fill,
+                anchor=anchor,
+                state=state,
+                angle=angle,
+            )
         )
 
     # Wrapper for canvas.move method
     def move(self, _object, x, y):
-        self.renderer.root_surface.move(_object, x, y)
-        self.renderer.dirty = True
+        self._execute_in_window_thread(
+            lambda: (
+                self.renderer.root_surface.move(_object, x, y),
+                setattr(self.renderer, "dirty", True),
+            )
+        )
 
     def object_place(self, _object, x, y):
-        self.renderer.root_surface.object_place(_object, x, y)
-        self.renderer.dirty = True
+        self._execute_in_window_thread(
+            lambda: (
+                self.renderer.root_surface.object_place(_object, x, y),
+                setattr(self.renderer, "dirty", True),
+            )
+        )
 
     # Wrapper for canvas.delete method
     def delete(self, _object):
-        self.renderer.root_surface.delete(_object)
-        self.renderer.dirty = True
+        self._execute_in_window_thread(
+            lambda: (
+                self.renderer.root_surface.delete(_object),
+                setattr(self.renderer, "dirty", True),
+            )
+        )
 
     # Wrapper for canvas.change_state method
     def change_state(self, _object, state):
-        self.renderer.root_surface.change_state(_object, state)
-        self.renderer.dirty = True
+        self._execute_in_window_thread(
+            lambda: (
+                self.renderer.root_surface.change_state(_object, state),
+                setattr(self.renderer, "dirty", True),
+            )
+        )
 
     # NOTE: Other methods
 
@@ -435,16 +507,19 @@ class _window_internal(threading.Thread, Component):
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
-        self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        self._execute_in_window_thread(
+            lambda: self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        )
         return self
 
     # Wrapper for root.bind() method, in future, add global keypress handling
     def bind(self, key, command):
-        self.root.bind(key, command)
+        self._execute_in_window_thread(lambda: self.root.bind(key, command))
 
     # Main method
     def run(self):
         try:
+            self._window_thread_id = threading.get_ident()
             # Create window
             self.root = rendering.NativeGLWindow(
                 self.width,
@@ -490,6 +565,7 @@ class _window_internal(threading.Thread, Component):
             self.bind("<Motion>", self.hover)
             self.bind("<Leave>", self.leave_window)
 
+            self.root.after(0, self._drain_ui_queue)
             self._render_tick()
             self.root.mainloop()
         except Exception as exc:
@@ -521,21 +597,24 @@ class _window_internal(threading.Thread, Component):
         if height is not None:
             self._size[1] = int(height)
 
-        # Update the window geometry
-        self.root.geometry(f"{self.width}x{self.height}")
+        def _apply_resize():
+            # Update the window geometry
+            self.root.geometry(f"{self.width}x{self.height}")
 
-        # If canvas dimensions should match window, update those too
-        self.canvas_width = self.width
-        self.canvas_height = self.height
-        self.display.configure(width=self.width, height=self.height)
-        self.renderer.width = self.width
-        self.renderer.height = self.height
-        self.renderer.root_surface.width = self.width
-        self.renderer.root_surface.height = self.height
-        self.renderer.dirty = True
+            # If canvas dimensions should match window, update those too
+            self.canvas_width = self.width
+            self.canvas_height = self.height
+            self.display.configure(width=self.width, height=self.height)
+            self.renderer.width = self.width
+            self.renderer.height = self.height
+            self.renderer.root_surface.width = self.width
+            self.renderer.root_surface.height = self.height
+            self.renderer.dirty = True
 
-        # Update all children to match new dimensions
-        self._update_children()
+            # Update all children to match new dimensions
+            self._update_children()
+
+        self._execute_in_window_thread(_apply_resize)
 
         return self
 
@@ -548,7 +627,7 @@ class _window_internal(threading.Thread, Component):
         """
         # Use deiconify to make window visible if it was withdrawn
         if self.root is not None:
-            self.root.deiconify()
+            self._execute_in_window_thread(self.root.deiconify)
             self.update()
 
         return self
@@ -562,7 +641,7 @@ class _window_internal(threading.Thread, Component):
         """
         # Use withdraw to hide window without destroying it
         if self.root is not None:
-            self.root.withdraw()
+            self._execute_in_window_thread(self.root.withdraw)
 
         return self
 
@@ -581,8 +660,12 @@ class _window_internal(threading.Thread, Component):
             self: Returns self for method chaining
         """
         if _object:
-            self.renderer.root_surface.configure(_object, **kwargs)
-            self.renderer.dirty = True
+            self._execute_in_window_thread(
+                lambda: (
+                    self.renderer.root_surface.configure(_object, **kwargs),
+                    setattr(self.renderer, "dirty", True),
+                )
+            )
             return self
 
         if "width" in kwargs or "height" in kwargs:
@@ -591,19 +674,22 @@ class _window_internal(threading.Thread, Component):
         if "title" in kwargs:
             self.title = kwargs["title"]
             if self.root is not None:
-                self.root.title(self.title)
+                self._execute_in_window_thread(lambda: self.root.title(self.title))
 
         if "resizable" in kwargs:
             self.resizable = kwargs["resizable"]
             if type(self.resizable) is bool:
                 self.resizable = (self.resizable, self.resizable)
             if self.root is not None:
-                self.root.resizable(self.resizable[0], self.resizable[1])
+                self._execute_in_window_thread(
+                    lambda: self.root.resizable(self.resizable[0], self.resizable[1])
+                )
 
         return self
 
     def update(self):
-        self.root.update()
+        if self.root is not None:
+            self._execute_in_window_thread(self.root.update)
         return self
 
     def _render_tick(self):
@@ -622,6 +708,103 @@ class _window_internal(threading.Thread, Component):
 
     def end_render_batch(self):
         self._render_batch_depth = max(0, self._render_batch_depth - 1)
+
+    # Container surface operations are also serialized through the window queue.
+    def create_container_surface(self, width, height, x=0, y=0):
+        return self._execute_in_window_thread(
+            lambda: self.renderer.create_container_surface(width, height, x=x, y=y)
+        )
+
+    def update_container_surface(self, surface_id, x=None, y=None, width=None, height=None):
+        self._execute_in_window_thread(
+            lambda: self.renderer.update_container_surface(
+                surface_id, x=x, y=y, width=width, height=height
+            )
+        )
+        self.renderer.dirty = True
+
+    def remove_container_surface(self, surface_id):
+        self._execute_in_window_thread(
+            lambda: self.renderer.remove_container_surface(surface_id)
+        )
+
+    def container_create_image(self, surface_id, x, y, image, state="normal"):
+        return self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].create_image(
+                x, y, image, state=state
+            )
+        )
+
+    def container_create_rectangle(
+        self,
+        surface_id,
+        x,
+        y,
+        width,
+        height=0,
+        fill=0,
+        border_width=0,
+        outline=None,
+        state="normal",
+    ):
+        return self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].create_rectangle(
+                x,
+                y,
+                width,
+                height,
+                fill=fill,
+                border_width=border_width,
+                outline=outline,
+                state=state,
+            )
+        )
+
+    def container_create_text(
+        self, surface_id, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
+    ):
+        return self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].create_text(
+                x,
+                y,
+                text=text,
+                font=font,
+                fill=fill,
+                anchor=anchor,
+                state=state,
+                angle=angle,
+            )
+        )
+
+    def container_move(self, surface_id, _object, x, y):
+        self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].move(_object, x, y)
+        )
+        self.renderer.dirty = True
+
+    def container_object_place(self, surface_id, _object, x, y):
+        self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].object_place(_object, x, y)
+        )
+        self.renderer.dirty = True
+
+    def container_delete(self, surface_id, _object):
+        self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].delete(_object)
+        )
+        self.renderer.dirty = True
+
+    def container_change_state(self, surface_id, _object, state):
+        self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].change_state(_object, state)
+        )
+        self.renderer.dirty = True
+
+    def container_configure(self, surface_id, _object, **kwargs):
+        self._execute_in_window_thread(
+            lambda: self.renderer.container_surfaces[surface_id].configure(_object, **kwargs)
+        )
+        self.renderer.dirty = True
 
 
 def Window(

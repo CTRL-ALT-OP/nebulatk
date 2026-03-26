@@ -1,5 +1,7 @@
 import heapq
 import itertools
+import multiprocessing as mp
+import queue as std_queue
 import re
 import threading
 import time
@@ -325,16 +327,15 @@ def _glfw_terminate_ref():
 
 
 class NativeGLWindow:
-    """GLFW-backed window exposing a tkinter-like scheduling/event API."""
+    """Process-backed GLFW window exposing a tkinter-like scheduling/event API."""
 
     def __init__(
         self, width, height, title="ntk", resizable=(True, True), override=False
     ):
-        if glfw is None:
-            raise RuntimeError("OpenGL backend unavailable. Install/enable glfw + PyOpenGL.")
-        if not _glfw_init_ref():
-            raise RuntimeError("Failed to initialize GLFW.")
-
+        if glfw is None or GL is None:
+            raise RuntimeError(
+                "OpenGL backend unavailable. Install/enable glfw + PyOpenGL."
+            )
         self._closed = False
         self._running = False
         self._bindings = {}
@@ -350,32 +351,31 @@ class NativeGLWindow:
         self._mouse_y = 0
         self._resizable = tuple(resizable)
         self._owner_thread_id = threading.get_ident()
-
-        glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
-        glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
-        glfw.window_hint(glfw.CLIENT_API, glfw.OPENGL_API)
-        # Profile hints are only valid for OpenGL >= 3.2. Since we request 2.1
-        # for fixed-function compatibility, do not set OPENGL_PROFILE here.
-        glfw.window_hint(
-            glfw.RESIZABLE, glfw.TRUE if (self._resizable[0] or self._resizable[1]) else glfw.FALSE
+        self._window = object()
+        self._window_id = f"native-{id(self)}"
+        self._sync_lock = threading.Lock()
+        self._ctx = mp.get_context("spawn")
+        self._command_queue = self._ctx.Queue()
+        self._event_queue = self._ctx.Queue()
+        self._response_queue = self._ctx.Queue()
+        self._hwnd = 0
+        self._process = self._ctx.Process(
+            target=_native_window_process_main,
+            args=(
+                int(width),
+                int(height),
+                str(title),
+                tuple(self._resizable),
+                bool(override),
+                self._window_id,
+                self._command_queue,
+                self._event_queue,
+                self._response_queue,
+            ),
+            daemon=True,
         )
-        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
-        glfw.window_hint(glfw.DECORATED, glfw.FALSE if override else glfw.TRUE)
-
-        self._window = glfw.create_window(int(width), int(height), str(title), None, None)
-        if not self._window:
-            _glfw_terminate_ref()
-            raise RuntimeError("Failed to create GLFW window.")
-
-        glfw.make_context_current(self._window)
-        glfw.swap_interval(0)
-
-        glfw.set_window_close_callback(self._window, self._on_close_requested)
-        glfw.set_mouse_button_callback(self._window, self._on_mouse_button)
-        glfw.set_cursor_pos_callback(self._window, self._on_cursor_pos)
-        glfw.set_cursor_enter_callback(self._window, self._on_cursor_enter)
-        glfw.set_key_callback(self._window, self._on_key)
-        glfw.set_char_callback(self._window, self._on_char)
+        self._process.start()
+        self._wait_for_process_ready()
 
     @property
     def handle(self):
@@ -401,13 +401,86 @@ class NativeGLWindow:
     def _run_window_op(self, op):
         if self._window is None:
             return
-        def _locked_op():
-            with _GLFW_API_LOCK:
-                op()
-        if self._is_owner_thread():
-            _locked_op()
-        else:
-            self.after(0, _locked_op)
+        self._send_native_command(op)
+
+    def _wait_for_process_ready(self):
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            self._process_events()
+            if self._hwnd:
+                return
+            if not self._process.is_alive():
+                break
+            time.sleep(0.01)
+        raise RuntimeError("Failed to initialize native window process.")
+
+    def _send_native_command(self, command, expect_response=False, timeout=2.0):
+        if self._window is None:
+            return None
+        payload = {"type": "command", "window_id": self._window_id, "command": command}
+        if not expect_response:
+            self._command_queue.put(payload)
+            return None
+        request_id = f"req-{next(self._timer_counter)}-{time.time_ns()}"
+        payload["request_id"] = request_id
+        with self._sync_lock:
+            self._command_queue.put(payload)
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                remaining = max(0.01, min(0.25, deadline - time.time()))
+                try:
+                    message = self._response_queue.get(timeout=remaining)
+                except std_queue.Empty:
+                    self._process_events()
+                    continue
+                if (
+                    message.get("type") == "response"
+                    and message.get("window_id") == self._window_id
+                    and message.get("request_id") == request_id
+                ):
+                    return message.get("value")
+                # Preserve unrelated async messages by routing through event handler.
+                self._handle_process_message(message)
+        return None
+
+    def _handle_process_message(self, message):
+        if not isinstance(message, dict):
+            return
+        msg_type = message.get("type")
+        if msg_type == "ready" and message.get("window_id") == self._window_id:
+            self._hwnd = int(message.get("hwnd") or 0)
+            return
+        if msg_type == "event" and message.get("window_id") == self._window_id:
+            name = message.get("name")
+            event = NativeEvent(
+                x=int(message.get("x", 0)),
+                y=int(message.get("y", 0)),
+                keysym=str(message.get("keysym", "")),
+                char=str(message.get("char", "")),
+            )
+            with self._event_lock:
+                self._mouse_x, self._mouse_y = event.x, event.y
+            self._dispatch(name, event)
+            return
+        if msg_type == "protocol" and message.get("window_id") == self._window_id:
+            callback = self._protocol_handlers.get(message.get("name"))
+            if callback is not None:
+                callback()
+            return
+        if (
+            msg_type == "closed"
+            and message.get("window_id") == self._window_id
+            and self._running
+        ):
+            self._running = False
+
+    def _process_events(self):
+        while True:
+            try:
+                message = self._event_queue.get_nowait()
+            except std_queue.Empty:
+                break
+            self._handle_process_message(message)
 
     def _on_close_requested(self, _window):
         callback = self._protocol_handlers.get("WM_DELETE_WINDOW")
@@ -481,8 +554,7 @@ class NativeGLWindow:
         due = time.time() + (max(0, int(ms)) / 1000.0)
         with self._timers_lock:
             heapq.heappush(self._timers, (due, next(self._timer_counter), timer_id, callback))
-        with _GLFW_API_LOCK:
-            glfw.post_empty_event()
+        self._send_native_command({"op": "wake"})
         return timer_id
 
     def after_cancel(self, timer_id):
@@ -515,89 +587,69 @@ class NativeGLWindow:
         pos_x = int(match.group(3)) if match.group(3) is not None else None
         pos_y = int(match.group(4)) if match.group(4) is not None else None
 
-        def _apply():
-            if self._window is None:
-                return
-            glfw.set_window_size(self._window, width, height)
-            if pos_x is not None and pos_y is not None:
-                glfw.set_window_pos(self._window, pos_x, pos_y)
-
-        self._run_window_op(_apply)
+        self._send_native_command(
+            {
+                "op": "geometry",
+                "width": width,
+                "height": height,
+                "x": pos_x,
+                "y": pos_y,
+            }
+        )
 
     def title(self, value):
-        self._run_window_op(
-            lambda: self._window is not None
-            and glfw.set_window_title(self._window, str(value))
-        )
+        self._send_native_command({"op": "title", "value": str(value)})
 
     def resizable(self, can_resize_x, can_resize_y):
         self._resizable = (bool(can_resize_x), bool(can_resize_y))
-        self._run_window_op(
-            lambda: self._window is not None
-            and glfw.set_window_attrib(
-                self._window,
-                glfw.RESIZABLE,
-                glfw.TRUE if any(self._resizable) else glfw.FALSE,
-            )
+        self._send_native_command(
+            {
+                "op": "resizable",
+                "x": self._resizable[0],
+                "y": self._resizable[1],
+            }
         )
 
     def overrideredirect(self, override):
-        self._run_window_op(
-            lambda: self._window is not None
-            and glfw.set_window_attrib(
-                self._window, glfw.DECORATED, glfw.FALSE if override else glfw.TRUE
-            )
-        )
+        self._send_native_command({"op": "override", "value": bool(override)})
 
     def wm_attributes(self, *_args, **_kwargs):
         return None
 
     def lift(self):
-        self._run_window_op(
-            lambda: self._window is not None and glfw.focus_window(self._window)
-        )
+        self._send_native_command({"op": "focus"})
 
     def update(self):
         if self._window is None:
             return
-        # External callers may invoke update() from non-window threads.
-        # Keep this method GL-safe by avoiding draw calls here.
-        with _GLFW_API_LOCK:
-            glfw.post_empty_event()
-            if threading.get_ident() == self._owner_thread_id:
-                glfw.poll_events()
-                self._process_timers()
+        self._send_native_command({"op": "wake"})
+        self._process_events()
+        self._process_timers()
 
     def update_idletasks(self):
         self._process_timers()
 
     def withdraw(self):
-        self._run_window_op(
-            lambda: self._window is not None and glfw.hide_window(self._window)
-        )
+        self._send_native_command({"op": "withdraw"})
 
     def deiconify(self):
-        self._run_window_op(
-            lambda: self._window is not None and glfw.show_window(self._window)
-        )
+        self._send_native_command({"op": "deiconify"})
 
     def clipboard_clear(self):
         self._clipboard_fallback = ""
-        self._run_window_op(
-            lambda: self._window is not None and glfw.set_clipboard_string(self._window, "")
-        )
+        self._send_native_command({"op": "clipboard_set", "value": ""})
 
     def clipboard_append(self, value):
         text = str(value)
         self._clipboard_fallback = text
-        self._run_window_op(
-            lambda: self._window is not None and glfw.set_clipboard_string(self._window, text)
-        )
+        self._send_native_command({"op": "clipboard_set", "value": text})
 
     def clipboard_get(self):
         if self._window is None:
             return self._clipboard_fallback
-        value = glfw.get_clipboard_string(self._window)
+        value = self._send_native_command(
+            {"op": "clipboard_get"}, expect_response=True, timeout=1.0
+        )
         if value is None:
             if self._clipboard_fallback == "":
                 raise RuntimeError("Clipboard is empty")
@@ -609,58 +661,261 @@ class NativeGLWindow:
     def winfo_id(self):
         if self._window is None:
             return 0
-        if hasattr(glfw, "get_win32_window"):
-            with _GLFW_API_LOCK:
-                return glfw.get_win32_window(self._window)
-        return 0
+        return int(self._hwnd or 0)
+
+    def submit_frame(self, frame_rgba, width, height):
+        if self._window is None:
+            return
+        self._send_native_command(
+            {
+                "op": "frame",
+                "width": int(width),
+                "height": int(height),
+                "frame_rgba": frame_rgba,
+            }
+        )
 
     def mainloop(self):
         if self._window is None:
             return
         self._running = True
         while self._running:
-            with _GLFW_API_LOCK:
-                if self._window is None or glfw.window_should_close(self._window):
-                    break
-                glfw.poll_events()
-
+            if self._window is None:
+                break
+            self._process_events()
             self._process_timers()
-
-            if self._draw_callback is not None:
-                with _GLFW_API_LOCK:
-                    if self._window is None:
-                        break
-                    glfw.make_context_current(self._window)
-                    try:
-                        self._draw_callback()
-                        glfw.swap_buffers(self._window)
-                    except Exception:
-                        traceback.print_exc()
-
-            # Yield briefly so multiple windows and animation threads stay smooth.
             time.sleep(0.001)
         self.destroy()
 
     def quit(self):
         self._running = False
         if self._window is not None:
-            with _GLFW_API_LOCK:
-                glfw.set_window_should_close(self._window, True)
-                glfw.post_empty_event()
+            self._send_native_command({"op": "quit"})
 
     def destroy(self):
         if self._closed:
             return
         self._closed = True
         if self._window is not None:
-            with _GLFW_API_LOCK:
-                glfw.destroy_window(self._window)
+            try:
+                self._send_native_command({"op": "quit"})
+            except Exception:
+                pass
+            if self._process is not None:
+                self._process.join(timeout=1.0)
+                if self._process.is_alive():
+                    self._process.terminate()
+                    self._process.join(timeout=1.0)
             self._window = None
-        _glfw_terminate_ref()
+
+
+def _native_window_process_key_name(key):
+    special = {
+        glfw.KEY_BACKSPACE: "BackSpace",
+        glfw.KEY_DELETE: "Delete",
+        glfw.KEY_LEFT: "Left",
+        glfw.KEY_RIGHT: "Right",
+        glfw.KEY_HOME: "Home",
+        glfw.KEY_END: "End",
+        glfw.KEY_LEFT_SHIFT: "Shift_L",
+        glfw.KEY_RIGHT_SHIFT: "Shift_R",
+        glfw.KEY_LEFT_CONTROL: "Control_L",
+        glfw.KEY_RIGHT_CONTROL: "Control_R",
+        glfw.KEY_LEFT_SUPER: "Meta_L",
+        glfw.KEY_RIGHT_SUPER: "Meta_R",
+    }
+    if key in special:
+        return special[key]
+    if glfw.KEY_A <= key <= glfw.KEY_Z:
+        return chr(ord("a") + (key - glfw.KEY_A))
+    name = glfw.get_key_name(key, 0)
+    return name if name is not None else ""
+
+
+def _native_window_process_main(
+    width,
+    height,
+    title,
+    resizable,
+    override,
+    window_id,
+    command_queue,
+    event_queue,
+    response_queue,
+):
+    if glfw is None or GL is None:
+        return
+    if not glfw.init():
+        return
+
+    try:
+        glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
+        glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
+        glfw.window_hint(glfw.CLIENT_API, glfw.OPENGL_API)
+        glfw.window_hint(glfw.RESIZABLE, glfw.TRUE if (resizable[0] or resizable[1]) else glfw.FALSE)
+        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
+        glfw.window_hint(glfw.DECORATED, glfw.FALSE if override else glfw.TRUE)
+
+        window = glfw.create_window(int(width), int(height), str(title), None, None)
+        if not window:
+            return
+        glfw.make_context_current(window)
+        glfw.swap_interval(0)
+
+        class _RootHandle:
+            def __init__(self, handle):
+                self.handle = handle
+
+        display = OpenGLImageDisplay(_RootHandle(window), width, height)
+        clipboard_fallback = ""
+        mouse_state = {"x": 0, "y": 0}
+        running = True
+
+        def send_event(name, x=0, y=0, keysym="", char=""):
+            event_queue.put(
+                {
+                    "type": "event",
+                    "window_id": window_id,
+                    "name": name,
+                    "x": int(x),
+                    "y": int(y),
+                    "keysym": keysym,
+                    "char": char,
+                }
+            )
+
+        def on_close_requested(_window):
+            event_queue.put(
+                {
+                    "type": "protocol",
+                    "window_id": window_id,
+                    "name": "WM_DELETE_WINDOW",
+                }
+            )
+            glfw.set_window_should_close(_window, False)
+
+        def on_cursor_pos(_window, x, y):
+            mouse_state["x"], mouse_state["y"] = int(x), int(y)
+            send_event("<Motion>", x, y)
+
+        def on_cursor_enter(_window, entered):
+            if not entered:
+                send_event("<Leave>", mouse_state["x"], mouse_state["y"])
+
+        def on_mouse_button(_window, button, action, _mods):
+            if button == glfw.MOUSE_BUTTON_LEFT and action == glfw.PRESS:
+                send_event("<Button-1>", mouse_state["x"], mouse_state["y"])
+            elif button == glfw.MOUSE_BUTTON_LEFT and action == glfw.RELEASE:
+                send_event("<ButtonRelease-1>", mouse_state["x"], mouse_state["y"])
+
+        def on_key(_window, key, scancode, action, _mods):
+            keysym = _native_window_process_key_name(key)
+            char = glfw.get_key_name(key, scancode) or ""
+            if action in (glfw.PRESS, glfw.REPEAT):
+                send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
+            elif action == glfw.RELEASE:
+                send_event("<KeyRelease>", mouse_state["x"], mouse_state["y"], keysym, char)
+
+        glfw.set_window_close_callback(window, on_close_requested)
+        glfw.set_cursor_pos_callback(window, on_cursor_pos)
+        glfw.set_cursor_enter_callback(window, on_cursor_enter)
+        glfw.set_mouse_button_callback(window, on_mouse_button)
+        glfw.set_key_callback(window, on_key)
+
+        hwnd = glfw.get_win32_window(window) if hasattr(glfw, "get_win32_window") else 0
+        event_queue.put({"type": "ready", "window_id": window_id, "hwnd": int(hwnd or 0)})
+
+        while running and not glfw.window_should_close(window):
+            glfw.poll_events()
+
+            while True:
+                try:
+                    message = command_queue.get_nowait()
+                except std_queue.Empty:
+                    break
+
+                if not isinstance(message, dict):
+                    continue
+                if message.get("window_id") != window_id:
+                    continue
+                command = message.get("command") or {}
+                op = command.get("op")
+                request_id = message.get("request_id")
+
+                if op == "quit":
+                    running = False
+                    glfw.set_window_should_close(window, True)
+                elif op == "wake":
+                    pass
+                elif op == "geometry":
+                    glfw.set_window_size(
+                        window, int(command.get("width", width)), int(command.get("height", height))
+                    )
+                    if command.get("x") is not None and command.get("y") is not None:
+                        glfw.set_window_pos(window, int(command["x"]), int(command["y"]))
+                elif op == "title":
+                    glfw.set_window_title(window, str(command.get("value", "")))
+                elif op == "resizable":
+                    can_resize = bool(command.get("x")) or bool(command.get("y"))
+                    glfw.set_window_attrib(
+                        window, glfw.RESIZABLE, glfw.TRUE if can_resize else glfw.FALSE
+                    )
+                elif op == "override":
+                    glfw.set_window_attrib(
+                        window,
+                        glfw.DECORATED,
+                        glfw.FALSE if bool(command.get("value")) else glfw.TRUE,
+                    )
+                elif op == "withdraw":
+                    glfw.hide_window(window)
+                elif op == "deiconify":
+                    glfw.show_window(window)
+                elif op == "focus":
+                    glfw.focus_window(window)
+                elif op == "frame":
+                    display.show_frame_bytes(
+                        command.get("frame_rgba"),
+                        int(command.get("width", width)),
+                        int(command.get("height", height)),
+                    )
+                elif op == "clipboard_set":
+                    clipboard_fallback = str(command.get("value", ""))
+                    glfw.set_clipboard_string(window, clipboard_fallback)
+                elif op == "clipboard_get":
+                    value = glfw.get_clipboard_string(window)
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", errors="ignore")
+                    if value is None:
+                        value = clipboard_fallback
+                    response_queue.put(
+                        {
+                            "type": "response",
+                            "window_id": window_id,
+                            "request_id": request_id,
+                            "value": value,
+                        }
+                    )
+
+            try:
+                display.draw()
+                glfw.swap_buffers(window)
+            except Exception:
+                traceback.print_exc()
+            time.sleep(0.001)
+    finally:
+        try:
+            event_queue.put({"type": "closed", "window_id": window_id})
+        except Exception:
+            pass
+        try:
+            glfw.terminate()
+        except Exception:
+            pass
 
 
 class OpenGLImageDisplay:
     def __init__(self, root, width, height):
+        self._proxy_mode = hasattr(root, "submit_frame")
         self._enabled = glfw is not None and GL is not None
         self._texture_id = None
         self._program_id = None
@@ -677,6 +932,8 @@ class OpenGLImageDisplay:
         self.root = root
         self.canvas = root
 
+        if self._proxy_mode:
+            return
         if not self._enabled:
             raise RuntimeError(
                 "OpenGL backend unavailable. Install/enable glfw + PyOpenGL."
@@ -840,10 +1097,22 @@ class OpenGLImageDisplay:
     def show_frame(self, frame):
         rgba = frame.convert("RGBA")
         self.width, self.height = rgba.size
-        self._frame_rgba = rgba.tobytes("raw", "RGBA")
+        frame_rgba = rgba.tobytes("raw", "RGBA")
+        if self._proxy_mode:
+            self.root.submit_frame(frame_rgba, self.width, self.height)
+            return
+        self._frame_rgba = frame_rgba
+        self._needs_texture_upload = True
+
+    def show_frame_bytes(self, frame_rgba, width, height):
+        self.width = int(width)
+        self.height = int(height)
+        self._frame_rgba = frame_rgba
         self._needs_texture_upload = True
 
     def draw(self):
+        if self._proxy_mode:
+            return
         framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.root.handle)
         if framebuffer_width <= 0 or framebuffer_height <= 0:
             return
