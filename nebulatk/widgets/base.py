@@ -146,7 +146,7 @@ class _widget_properties:
                     self._root.master.children.remove(self)
 
         if root != root.master:
-            root.children.append(self)
+            root.children.insert(0, self)
         else:
             root.master.children.insert(0, self)
         self._root = root

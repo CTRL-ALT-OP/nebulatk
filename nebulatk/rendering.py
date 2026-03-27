@@ -56,7 +56,11 @@ def _glfw_key_name(key):
     }
     if key in special:
         return special[key]
-    if hasattr(glfw, "KEY_A") and hasattr(glfw, "KEY_Z") and glfw.KEY_A <= key <= glfw.KEY_Z:
+    if (
+        hasattr(glfw, "KEY_A")
+        and hasattr(glfw, "KEY_Z")
+        and glfw.KEY_A <= key <= glfw.KEY_Z
+    ):
         return chr(ord("a") + (key - glfw.KEY_A))
     name = glfw.get_key_name(key, 0)
     return name if name is not None else ""
@@ -137,7 +141,12 @@ class PILImageRenderer:
     def _resolve_image(self, widget):
         slot = self._safe_attr(widget, "_active_image_slot", "image_object")
         fallback = {
-            "hover_object_active": ["active_hover_image", "hover_image", "active_image", "image"],
+            "hover_object_active": [
+                "active_hover_image",
+                "hover_image",
+                "active_image",
+                "image",
+            ],
             "hover_object": ["hover_image", "image"],
             "active_object": ["active_image", "image"],
             "image_object": ["image"],
@@ -151,7 +160,12 @@ class PILImageRenderer:
     def _resolve_fill(self, widget):
         slot = self._safe_attr(widget, "_active_bg_slot", "bg_object")
         fallback = {
-            "bg_object_hover_active": ["active_hover_fill", "hover_fill", "active_fill", "fill"],
+            "bg_object_hover_active": [
+                "active_hover_fill",
+                "hover_fill",
+                "active_fill",
+                "fill",
+            ],
             "bg_object_hover": ["hover_fill", "fill"],
             "bg_object_active": ["active_fill", "fill"],
             "bg_object": ["fill"],
@@ -196,7 +210,9 @@ class PILImageRenderer:
         info["text_length"] = len(str(text))
         return info
 
-    def _draw_widget(self, frame, draw_ctx, widget, parent_x, parent_y, parent_visible=True):
+    def _draw_widget(
+        self, frame, draw_ctx, widget, parent_x, parent_y, parent_visible=True
+    ):
         visible = (
             parent_visible
             and self._safe_attr(widget, "visible", True)
@@ -213,7 +229,11 @@ class PILImageRenderer:
         outline = _to_rgba(self._safe_attr(widget, "border", None))
 
         fill = self._resolve_fill(widget)
-        if width > 0 and height > 0 and (fill is not None or (outline is not None and border_width > 0)):
+        if (
+            width > 0
+            and height > 0
+            and (fill is not None or (outline is not None and border_width > 0))
+        ):
             self._alpha_draw_rectangle(
                 frame,
                 [abs_x, abs_y, abs_x + width, abs_y + height],
@@ -269,7 +289,12 @@ class PILImageRenderer:
         # Rendering must be back-to-front so lower layers are painted first.
         for child in reversed(children):
             self._draw_widget(
-                frame, draw_ctx, child, parent_x, parent_y, parent_visible=parent_visible
+                frame,
+                draw_ctx,
+                child,
+                parent_x,
+                parent_y,
+                parent_visible=parent_visible,
             )
             child_visible = (
                 parent_visible
@@ -531,7 +556,9 @@ class NativeGLWindow:
             return
         keysym = char.lower() if char.isalpha() else char
         with self._event_lock:
-            event = NativeEvent(x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char)
+            event = NativeEvent(
+                x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char
+            )
         self._dispatch("<Key>", event)
 
     def _key_name(self, key):
@@ -541,7 +568,9 @@ class NativeGLWindow:
         keysym = self._key_name(key)
         char = glfw.get_key_name(key, scancode) or ""
         with self._event_lock:
-            event = NativeEvent(x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char)
+            event = NativeEvent(
+                x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char
+            )
         if action in (glfw.PRESS, glfw.REPEAT):
             if _should_dispatch_keypress_event(keysym, char, _mods):
                 self._dispatch("<Key>", event)
@@ -556,7 +585,9 @@ class NativeGLWindow:
         timer_id = f"after#{next(self._timer_counter)}"
         due = time.time() + (max(0, int(ms)) / 1000.0)
         with self._timers_lock:
-            heapq.heappush(self._timers, (due, next(self._timer_counter), timer_id, callback))
+            heapq.heappush(
+                self._timers, (due, next(self._timer_counter), timer_id, callback)
+            )
         self._send_native_command({"op": "wake"})
         return timer_id
 
@@ -675,7 +706,9 @@ class NativeGLWindow:
     def winfo_width(self):
         if self._window is None:
             return 0
-        size = self._send_native_command({"op": "get_size"}, expect_response=True, timeout=1.0)
+        size = self._send_native_command(
+            {"op": "get_size"}, expect_response=True, timeout=1.0
+        )
         if not size:
             return 0
         return int(size.get("width", 0))
@@ -683,7 +716,9 @@ class NativeGLWindow:
     def winfo_height(self):
         if self._window is None:
             return 0
-        size = self._send_native_command({"op": "get_size"}, expect_response=True, timeout=1.0)
+        size = self._send_native_command(
+            {"op": "get_size"}, expect_response=True, timeout=1.0
+        )
         if not size:
             return 0
         return int(size.get("height", 0))
@@ -809,7 +844,9 @@ def _native_window_process_main(
             pass
 
     if glfw is None or GL is None:
-        report_startup_error("OpenGL backend unavailable (glfw or OpenGL module missing).")
+        report_startup_error(
+            "OpenGL backend unavailable (glfw or OpenGL module missing)."
+        )
         return
     if not glfw.init():
         report_startup_error("glfw.init() failed.")
@@ -819,7 +856,9 @@ def _native_window_process_main(
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 2)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
         glfw.window_hint(glfw.CLIENT_API, glfw.OPENGL_API)
-        glfw.window_hint(glfw.RESIZABLE, glfw.TRUE if (resizable[0] or resizable[1]) else glfw.FALSE)
+        glfw.window_hint(
+            glfw.RESIZABLE, glfw.TRUE if (resizable[0] or resizable[1]) else glfw.FALSE
+        )
         glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
         glfw.window_hint(glfw.DECORATED, glfw.FALSE if override else glfw.TRUE)
 
@@ -887,9 +926,13 @@ def _native_window_process_main(
             char = glfw.get_key_name(key, scancode) or ""
             if action in (glfw.PRESS, glfw.REPEAT):
                 if _should_dispatch_keypress_event(keysym, char, _mods):
-                    send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
+                    send_event(
+                        "<Key>", mouse_state["x"], mouse_state["y"], keysym, char
+                    )
             elif action == glfw.RELEASE:
-                send_event("<KeyRelease>", mouse_state["x"], mouse_state["y"], keysym, char)
+                send_event(
+                    "<KeyRelease>", mouse_state["x"], mouse_state["y"], keysym, char
+                )
 
         def on_char(_window, codepoint):
             try:
@@ -909,7 +952,9 @@ def _native_window_process_main(
         glfw.set_char_callback(window, on_char)
 
         hwnd = glfw.get_win32_window(window) if hasattr(glfw, "get_win32_window") else 0
-        event_queue.put({"type": "ready", "window_id": window_id, "hwnd": int(hwnd or 0)})
+        event_queue.put(
+            {"type": "ready", "window_id": window_id, "hwnd": int(hwnd or 0)}
+        )
 
         while running and not glfw.window_should_close(window):
             glfw.poll_events()
@@ -937,10 +982,14 @@ def _native_window_process_main(
                     pass
                 elif op == "geometry":
                     glfw.set_window_size(
-                        window, int(command.get("width", width)), int(command.get("height", height))
+                        window,
+                        int(command.get("width", width)),
+                        int(command.get("height", height)),
                     )
                     if command.get("x") is not None and command.get("y") is not None:
-                        glfw.set_window_pos(window, int(command["x"]), int(command["y"]))
+                        glfw.set_window_pos(
+                            window, int(command["x"]), int(command["y"])
+                        )
                 elif op == "title":
                     glfw.set_window_title(window, str(command.get("value", "")))
                 elif op == "resizable":
@@ -1004,7 +1053,10 @@ def _native_window_process_main(
                 glfw.swap_buffers(window)
             except Exception:
                 traceback.print_exc()
-            if close_request_deadline is not None and time.time() >= close_request_deadline:
+            if (
+                close_request_deadline is not None
+                and time.time() >= close_request_deadline
+            ):
                 running = False
                 glfw.set_window_should_close(window, True)
             time.sleep(0.001)
@@ -1192,7 +1244,9 @@ class OpenGLImageDisplay:
         stride = 4 * 4
         if self._pos_loc >= 0:
             GL.glEnableVertexAttribArray(self._pos_loc)
-            GL.glVertexAttribPointer(self._pos_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(0))
+            GL.glVertexAttribPointer(
+                self._pos_loc, 2, GL.GL_FLOAT, False, stride, ctypes.c_void_p(0)
+            )
         if self._uv_loc >= 0:
             GL.glEnableVertexAttribArray(self._uv_loc)
             GL.glVertexAttribPointer(
@@ -1222,7 +1276,9 @@ class OpenGLImageDisplay:
     def draw(self):
         if self._proxy_mode:
             return
-        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.root.handle)
+        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(
+            self.root.handle
+        )
         if framebuffer_width <= 0 or framebuffer_height <= 0:
             return
         # Keep content at a fixed pixel size and anchor to top-left.

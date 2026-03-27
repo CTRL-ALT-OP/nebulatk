@@ -288,7 +288,9 @@ class _window_internal(threading.Thread, Component):
         completed = done.wait(timeout=self._ui_wait_timeout)
         if not completed:
             if not self.is_alive():
-                raise RuntimeError("Window thread exited before processing queued work.")
+                raise RuntimeError(
+                    "Window thread exited before processing queued work."
+                )
             raise TimeoutError("Timed out waiting for window thread response.")
         if result["error"] is not None:
             raise result["error"]
@@ -561,7 +563,9 @@ class _window_internal(threading.Thread, Component):
                 try:
                     self.root.quit()
                 except Exception:
-                    logger.exception("Failed to quit native root during close callback.")
+                    logger.exception(
+                        "Failed to quit native root during close callback."
+                    )
 
             # Bind events to our new event handlers
             self.bind("<Button-1>", self.click)
@@ -946,14 +950,18 @@ def __main__():
     # canvas.destroy()
     window = Window(width=800, height=600)
 
-    details_frame = Frame(
-        window,
-        width=340,
-        height=240,
-        fill=[26, 34, 52, 204],  # 80% opacity
-        border=[160, 190, 255, 220],
-        border_width=2,
-    ).place(250, 130).hide()
+    details_frame = (
+        Frame(
+            window,
+            width=340,
+            height=240,
+            fill=[26, 34, 52, 204],  # 80% opacity
+            border=[160, 190, 255, 220],
+            border_width=2,
+        )
+        .place(25, 130)
+        .hide()
+    )
 
     Label(
         details_frame,
@@ -974,24 +982,32 @@ def __main__():
         border_width=0,
     ).place(20, 64)
 
-    hidden_label = Label(
-        details_frame,
-        text="I stay hidden",
-        width=120,
-        height=30,
-        fill=[120, 75, 130, 210],
-        border_width=0,
-    ).place(210, 64).hide()
+    hidden_label = (
+        Label(
+            details_frame,
+            text="I stay hidden",
+            width=120,
+            height=30,
+            fill=[120, 75, 130, 210],
+            border_width=0,
+        )
+        .place(210, 64)
+        .hide()
+    )
 
-    frame_entry = Entry(
-        details_frame,
-        text="hidden entry",
-        width=200,
-        height=30,
-        border_width=1,
-        fill=[255, 255, 255, 230],
-        border=[30, 40, 64, 255],
-    ).place(20, 110).hide()
+    frame_entry = (
+        Entry(
+            details_frame,
+            text="hidden entry",
+            width=200,
+            height=30,
+            border_width=1,
+            fill=[255, 255, 255, 230],
+            border=[30, 40, 64, 255],
+        )
+        .place(20, 110)
+        .hide()
+    )
 
     Slider(
         details_frame,
@@ -1041,6 +1057,7 @@ def __main__():
     btn2 = Button(window, text="Button 2", width=120, height=40, border_width=2)
 
     canvas.debug_font_resolution()
+    print(window.children)
     btn1.place(0, 0)
     btn2.place(120, 20)
     sleep(2)
