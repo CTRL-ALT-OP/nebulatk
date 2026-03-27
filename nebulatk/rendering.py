@@ -1,6 +1,7 @@
 import heapq
 import itertools
 import multiprocessing as mp
+import os
 import queue as std_queue
 import re
 import threading
@@ -637,6 +638,12 @@ class NativeGLWindow:
     def deiconify(self):
         self._send_native_command({"op": "deiconify"})
 
+    def iconbitmap(self, value):
+        if value is None:
+            return
+        icon_path = os.path.abspath(str(value))
+        self._send_native_command({"op": "iconbitmap", "value": icon_path})
+
     def clipboard_clear(self):
         self._clipboard_fallback = ""
         self._send_native_command({"op": "clipboard_set", "value": ""})
@@ -729,6 +736,53 @@ class NativeGLWindow:
 
 def _native_window_process_key_name(key):
     return _glfw_key_name(key)
+
+
+def _set_windows_window_icon(hwnd, icon_path):
+    """Set a Win32 window icon from an .ico file path."""
+    if not hwnd or not icon_path or os.name != "nt":
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        IMAGE_ICON = 1
+        LR_LOADFROMFILE = 0x0010
+        LR_DEFAULTSIZE = 0x0040
+        WM_SETICON = 0x0080
+        ICON_SMALL = 0
+        ICON_BIG = 1
+        icon_size_small = 16
+        icon_size_big = 32
+
+        abs_path = os.path.abspath(str(icon_path))
+        if not os.path.exists(abs_path):
+            return False
+
+        big_icon = user32.LoadImageW(
+            0,
+            abs_path,
+            IMAGE_ICON,
+            icon_size_big,
+            icon_size_big,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        )
+        small_icon = user32.LoadImageW(
+            0,
+            abs_path,
+            IMAGE_ICON,
+            icon_size_small,
+            icon_size_small,
+            LR_LOADFROMFILE | LR_DEFAULTSIZE,
+        )
+        if not big_icon and not small_icon:
+            return False
+
+        if big_icon:
+            user32.SendMessageW(int(hwnd), WM_SETICON, ICON_BIG, int(big_icon))
+        if small_icon:
+            user32.SendMessageW(int(hwnd), WM_SETICON, ICON_SMALL, int(small_icon))
+        return True
+    except Exception:
+        return False
 
 
 def _native_window_process_main(
@@ -904,6 +958,8 @@ def _native_window_process_main(
                     glfw.hide_window(window)
                 elif op == "deiconify":
                     glfw.show_window(window)
+                elif op == "iconbitmap":
+                    _set_windows_window_icon(hwnd, command.get("value"))
                 elif op == "focus":
                     glfw.focus_window(window)
                 elif op == "frame":

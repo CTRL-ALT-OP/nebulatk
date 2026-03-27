@@ -105,6 +105,7 @@ class _window_internal(threading.Thread, Component):
         self.active_keys = []
 
         self.title = title
+        self._iconbitmap_path = None
 
         # Initialize canvas size
         if canvas_height == "default":
@@ -547,6 +548,9 @@ class _window_internal(threading.Thread, Component):
 
             self.root.title(self.title)
 
+            if self._iconbitmap_path is not None:
+                self.root.iconbitmap(self._iconbitmap_path)
+
             self.root.resizable(self.resizable[0], self.resizable[1])
 
             self.root.overrideredirect(self.override)
@@ -635,6 +639,16 @@ class _window_internal(threading.Thread, Component):
         return self
 
     # Add configure method similar to widget configure
+    def iconbitmap(self, bitmap=None):
+        if bitmap is None:
+            return self
+        self._iconbitmap_path = str(bitmap)
+        if self.root is not None:
+            self._execute_in_window_thread(
+                lambda: self.root.iconbitmap(self._iconbitmap_path)
+            )
+        return self
+
     def configure(self, _object=None, **kwargs):
         """Configure window properties.
 
@@ -643,6 +657,7 @@ class _window_internal(threading.Thread, Component):
         - height: Window height
         - title: Window title
         - resizable: Tuple of (width_resizable, height_resizable)
+        - iconbitmap: Path to an .ico window icon file
 
         Returns:
             self: Returns self for method chaining
@@ -666,6 +681,10 @@ class _window_internal(threading.Thread, Component):
                 self._execute_in_window_thread(
                     lambda: self.root.resizable(self.resizable[0], self.resizable[1])
                 )
+
+        iconbitmap = kwargs.get("iconbitmap", kwargs.get("icon"))
+        if iconbitmap is not None:
+            self.iconbitmap(iconbitmap)
 
         background_color = kwargs.get(
             "background_color", kwargs.get("background-color")
