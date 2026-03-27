@@ -1,32 +1,84 @@
-# THIS PROJECT IS CURRENTLY IN EARLY DEVELOPMENT
-# FEEL FREE TO USE, REPORT ALL UNEXPECTED BEHAVIORS, QUESTIONS, OR FEATURE REQUESTS TO:
-# ctrl.alt.op@gmail.com
+# NebulaTk
 
-NebulaTk is a replacement for Tkinter that implements many functions that Tkinter does not.
-It now includes an image-based renderer option: widgets can be composed into Pillow surfaces and presented through a display layer that can use OpenGL (with Tk fallback if unavailable).
-All events, widgets, and functionality has been written either custom or with Pillow.
+NebulaTk is an early-stage, Tkinter-style GUI toolkit with a custom widget/rendering
+pipeline. Widgets are composed into Pillow images and displayed through an OpenGL
+window backend.
 
-# To run project:
-Ensure `pillow` is installed.
-The main file is nebulatk.py.
-When in the main project structure, you can run:
-python3.xx nebulatk/nebulatk.py
-This runs a sample window.
-To run tests, run `pytest` from the main folder.
+Questions, bug reports, and feature requests: `ctrl.alt.op@gmail.com` or through this GitHub repo
 
-## Non-TCL functionality:
-1. Non-blocking window mainloop
-2. One-line support
-    1. Multiple functions can be chained together, e.g. "Button().place().hide()"
-    2. Window creation is done in one line
-3. Window uses similar syntax to widgets
-    1. Configuration of the window is done as arguments in creation. E.g. "Window(title="test")"
-    2. Most methods that are in widgets, like .place() are also valid methods in the window
-4. Simple image loading, powered by Pillow
-    1. Images are passed in simply as paths, and are automatically loaded in, and resized according to the widget size
-    2. Full transparency support
-    3. Automatic boundaries for images with transparent portions
-    4. Different images for different widget states are supported
-5. Default behaviour for everything
-6. TTF files can be loaded and used as fonts, without having to install them
-7. Text is automatically resized to fit the widget, unless specified
+## Current status
+
+- Project is in active early development.
+- The current `Window()` path in this branch supports `render_mode="image_gl"` only, but might be expanded for vulkan later.
+- Rendering currently depends on a GLFW + PyOpenGL backend.
+
+## Installation
+
+From the repository root:
+
+```bash
+pip install -e .
+```
+
+For development and tests:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Quick start
+
+```python
+import nebulatk as ntk
+
+window = ntk.Window(title="NebulaTk")
+ntk.Button(window, text="Hello NebulaTk").place(20, 20)
+```
+
+You can also run included examples:
+
+```bash
+python examples/example.py
+python examples/relativeplace.py
+python examples/word_collage.py
+```
+
+Note: example scripts may reference local assets under `examples/Images/`. If those
+assets are missing in your checkout, update image paths or provide your own files.
+
+## Running tests
+
+From the project root:
+
+```bash
+pytest
+```
+
+## Public API highlights
+
+Top-level imports exposed by `nebulatk` include:
+
+- `Window`
+- `FileDialog`
+- Widgets: `Button`, `Label`, `Entry`, `Frame`, `Slider`, `Container`
+- Utility modules: `colors_manager`, `fonts_manager`, `image_manager`,
+  `bounds_manager`, `standard_methods`, `animation_controller`, `rendering`,
+  `file_manager`
+
+Many widget methods are chainable, for example:
+
+```python
+ntk.Button(window, text="Chainable").place(10, 10).hide().show()
+```
+
+## Project layout
+
+- `nebulatk/` - main package source
+- `nebulatk/widgets/` - widget classes and base components
+- `examples/` - runnable usage demos
+- `tests/` - `pytest` test suite
+
+## Notes
+
+- This project is not a drop-in implementation of Tk's internal event/render loop.
+- The window/rendering architecture uses both threading and multiprocessing internally.
