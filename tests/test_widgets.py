@@ -8,19 +8,41 @@ sys.path.insert(
 
 # Now import your package/module
 import nebulatk as ntk
+from nebulatk import _window_internal
+
+
+class _ClipboardRoot:
+    def __init__(self):
+        self._clipboard = ""
+
+    def after(self, _delay_ms, callback, *args):
+        callback(*args)
+
+    def update(self):
+        return None
+
+    def clipboard_clear(self):
+        self._clipboard = ""
+
+    def clipboard_append(self, text):
+        self._clipboard += str(text)
+
+    def clipboard_get(self):
+        return self._clipboard
 
 
 @pytest.fixture
-def canvas() -> ntk.Window:
+def canvas():
     """
     Create a test window for widget testing.
 
     Returns:
         ntk.Window: A window instance for testing widgets.
     """
-    window = ntk.Window(title="Test Window", width=800, height=500, render_mode="image_gl", fps=30)
+    window = _window_internal(title="Test Window", width=800, height=500, render_mode="image_gl", fps=30)
+    window.root = _ClipboardRoot()
     yield window
-    window.close()
+    window.close_animations()
 
 
 def test_children(canvas: ntk.Window) -> None:
@@ -30,10 +52,11 @@ def test_children(canvas: ntk.Window) -> None:
     Args:
         canvas: The test window fixture.
     """
+    baseline_count = len(canvas.children)
     button = ntk.Button(canvas, text="Button").place()
-    assert len(canvas.children) == 1
+    assert len(canvas.children) == baseline_count + 1
     button.destroy()
-    assert len(canvas.children) == 0
+    assert len(canvas.children) == baseline_count
 
 
 def test_button_properties(canvas: ntk.Window) -> None:

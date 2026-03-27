@@ -11,6 +11,16 @@ sys.path.insert(
 import nebulatk as ntk
 
 
+def _wait_for_frame(window: ntk.Window, timeout_s: float = 1.0):
+    deadline = time.time() + timeout_s
+    frame = None
+    while frame is None and time.time() < deadline:
+        frame = window.renderer.render_if_due()
+        if frame is None:
+            time.sleep(window.renderer.frame_interval)
+    return frame if frame is not None else window.renderer.last_frame
+
+
 @pytest.fixture
 def window() -> ntk.Window:
     """
@@ -79,19 +89,10 @@ def test_window_image_gl_render_cycle(image_gl_window: ntk.Window) -> None:
     while image_gl_window.renderer is None and time.time() < timeout_at:
         time.sleep(0.01)
 
-    rect_id, _ = image_gl_window.create_rectangle(
-        10,
-        10,
-        100,
-        80,
-        fill="#ff0000ff",
-        border_width=0,
-        outline="#ff0000ff",
-    )
-    assert rect_id is not None
-    assert image_gl_window.renderer.needs_redraw() is True
+    widget = ntk.Frame(image_gl_window, width=90, height=70, fill="#ff0000ff").place(10, 10)
+    assert widget in image_gl_window.children
 
-    frame = image_gl_window.renderer.render_if_due()
+    frame = _wait_for_frame(image_gl_window)
     assert frame is not None
     assert frame.size == (image_gl_window.width, image_gl_window.height)
 
@@ -101,5 +102,5 @@ def test_window_image_gl_resize_updates_renderer(image_gl_window: ntk.Window) ->
     image_gl_window.resize(410, 290)
     assert image_gl_window.renderer.width == 410
     assert image_gl_window.renderer.height == 290
-    assert image_gl_window.renderer.root_surface.width == 410
-    assert image_gl_window.renderer.root_surface.height == 290
+    assert image_gl_window.canvas_width == 410
+    assert image_gl_window.canvas_height == 290

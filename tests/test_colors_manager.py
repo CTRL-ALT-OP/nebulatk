@@ -67,3 +67,10 @@ def test_brighten_color():
     assert colors_manager.Color("#FF0000").brighten(5).color == "#ff0505ff"
     # Test brightening white (should remain white)
     assert colors_manager.Color("#FFFFFF").brighten(5).color == "#ffffffff"
+
+
+def test_none_color_transforms_are_safe():
+    color = colors_manager.Color(None)
+    assert color.brighten(5).color is None
+    assert color.darken(5).color is None
+    assert color.startswith("#") is False

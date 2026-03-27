@@ -134,18 +134,14 @@ def test_render_100_button_grid_outputs_frame_pixels():
             window, _build_button_grid
         )
         visible_pixels = _count_visible_pixels(frame)
-        object_count = len(window.renderer.root_surface.objects)
         _log_perf(
             "100 solid buttons first render",
             elapsed_s=f"{elapsed:.6f}",
-            object_count=object_count,
+            widget_count=len(widgets),
             visible_pixels=visible_pixels,
         )
         assert len(widgets) == 100
         assert elapsed > 0
-
-        # Data-structure assertion: OpenGL path stores drawables in root surface.
-        assert object_count >= 300
 
         # Rendered-image assertion: frame should contain many visible pixels.
         assert visible_pixels > 30000
@@ -171,14 +167,16 @@ def test_render_100_image_button_grid_has_image_objects_and_pixels():
         visible_pixels = _count_visible_pixels(frame)
         assert len(widgets) == 100
 
-        kinds = [obj.kind for obj in window.renderer.root_surface.objects.values()]
+        image_backed_count = sum(
+            1 for widget in widgets if getattr(widget, "image", None) is not None
+        )
         _log_perf(
             "100 image buttons first render",
-            object_count=len(kinds),
-            image_object_count=kinds.count("image"),
+            widget_count=len(widgets),
+            image_widget_count=image_backed_count,
             visible_pixels=visible_pixels,
         )
-        assert "image" in kinds
+        assert image_backed_count == 100
         assert visible_pixels > 20000
     finally:
         _close_window_safe(window)

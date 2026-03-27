@@ -15,6 +15,7 @@ import fonts_manager
 
 def test_create_font():
     assert fonts_manager.Font(None).font == ("Helvetica", -1)
+    assert fonts_manager.Font("default").font == ("Helvetica", -1)
 
     assert fonts_manager.Font("Arial").font == ("Arial", 10)
 
