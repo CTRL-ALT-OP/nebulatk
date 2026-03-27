@@ -1,5 +1,3 @@
-from time import sleep
-
 from .base import Component
 
 # Import modules needed for widget management
@@ -42,14 +40,7 @@ class Container(Component):
 
         self.maps = {}
         self._image_render_mode = True
-        self.surface_id = None
-        self.surface = None
         self.canvas = None
-
-        while self._window.renderer is None:
-            sleep(0.001)
-        self.surface_id = self._window.create_container_surface(width, height)
-        self.surface = None
 
         self.initialized = True
 
@@ -159,62 +150,15 @@ class Container(Component):
     def typing_up(self, event):
         pass
 
-    def create_image(self, x, y, image, state="normal"):
-        return self._window.container_create_image(self.surface_id, x, y, image, state=state)
-
-    def create_rectangle(
-        self,
-        x,
-        y,
-        width,
-        height=0,
-        fill=0,
-        border_width=0,
-        outline=None,
-        state="normal",
-    ):
-        return self._window.container_create_rectangle(
-            self.surface_id,
-            x,
-            y,
-            width,
-            height,
-            fill=fill,
-            border_width=border_width,
-            outline=outline,
-            state=state,
-        )
-
-    def create_text(
-        self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
-    ):
-        return self._window.container_create_text(
-            self.surface_id,
-            x,
-            y,
-            text=text,
-            font=font,
-            fill=fill,
-            anchor=anchor,
-            state=state,
-            angle=angle,
-        )
-
-    def move(self, _object, x, y):
-        self._window.container_move(self.surface_id, _object, x, y)
-
-    def object_place(self, _object, x, y):
-        self._window.container_object_place(self.surface_id, _object, x - self.x, y - self.y)
-
-    def delete(self, _object):
-        self._window.container_delete(self.surface_id, _object)
-
-    def change_state(self, _object, state):
-        self._window.container_change_state(self.surface_id, _object, state)
+    def request_redraw(self):
+        self._window.request_redraw()
 
     def configure(self, _object=None, **kwargs):
         if _object is not None:
-            self._window.container_configure(self.surface_id, _object, **kwargs)
+            return
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.request_redraw()
 
     def replicate_object(self, child):
         return
@@ -228,9 +172,7 @@ class Container(Component):
     def place(self, x, y):
         self._container_x = x
         self._container_y = y
-        self._window.update_container_surface(
-            self.surface_id, x=x, y=y, width=self.width, height=self.height
-        )
+        self.request_redraw()
         return self
 
     def _update_background_positions(self):

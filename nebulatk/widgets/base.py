@@ -137,11 +137,18 @@ class _widget_properties:
 
     @root.setter
     def root(self, root):
-        if self._root is not None and self.root != self.root.master:
-            root.children.remove(self)
+        if self._root is not None:
+            if self._root != self._root.master:
+                if self in self._root.children:
+                    self._root.children.remove(self)
+            else:
+                if self in self._root.master.children:
+                    self._root.master.children.remove(self)
 
         if root != root.master:
             root.children.append(self)
+        else:
+            root.master.children.insert(0, self)
         self._root = root
         self.master = root.master
         self.children = []
@@ -534,12 +541,14 @@ class _widget(_widget_properties, Component):
         self.active_text_object = None
 
         self._visible = True
+        self._render_visible = True
         self.hovering = False
+        self._active_image_slot = "image_object"
+        self._active_bg_slot = "bg_object"
+        self._active_text_slot = "text_object"
 
         self._root = None
         self.root = root
-
-        self.root.master.children.insert(0, self)
 
         self._size = [width, height]
 
@@ -659,9 +668,15 @@ class _widget(_widget_properties, Component):
             x, y = standard_methods.abs_position_to_rel(self, x, y)
             self.dragging_command(x, y)
 
+    def _request_redraw(self):
+        if hasattr(self.master, "request_redraw"):
+            self.master.request_redraw()
+
     def destroy(self):
         standard_methods.delete(self)
-        self.root.master.children.remove(self)
+        if hasattr(self.root, "children") and self in self.root.children:
+            self.root.children.remove(self)
+        self._request_redraw()
 
     def typed(self, char):
         if not self.can_type:
@@ -839,24 +854,11 @@ class _widget(_widget_properties, Component):
             x (int, optional): x position. Defaults to 0.
             y (int, optional): y position. Defaults to 0.
         """
-        # old_x, old_y = self.x, self.y
         x = int(x)
         y = int(y)
         if hasattr(self.master, "begin_render_batch"):
             self.master.begin_render_batch()
         try:
-            if self.bg_object is None and self.image_object is None:
-                standard_methods.place_bulk(self, x, y)
-                if self.bg_object is not None and self.bounds_type == "box":
-                    self.object = self.bg_object
-                elif self.image_object is not None:
-                    self.object = self.image_object
-                else:
-                    self.object = self.text_object
-            else:
-                standard_methods.update_positions(self, x, y)
-            # bounds_manager.update_bounds(self, old_x, old_y, x, y, mode=self.bounds_type)
-
             self._position = [x, y]
 
             self._update_children()
@@ -867,6 +869,7 @@ class _widget(_widget_properties, Component):
         finally:
             if hasattr(self.master, "end_render_batch"):
                 self.master.end_render_batch()
+        self._request_redraw()
 
         return self
 
@@ -874,26 +877,21 @@ class _widget(_widget_properties, Component):
         if hasattr(self.master, "begin_render_batch"):
             self.master.begin_render_batch()
         try:
-            standard_methods.schedule_delete(self)
-            self.place(self.x, self.y)
-            standard_methods.delete_scheduled(self)
+            self._update_children()
         finally:
             if hasattr(self.master, "end_render_batch"):
                 self.master.end_render_batch()
+        self._request_redraw()
 
     def _configure_size(self, size):
         self.update()
 
     def _configure_text(self, text):
-        # Update text in this widget
-        if self.text_object is not None:
-            self.master.configure(self.text_object, text=text)
-
-        if self.active_text_object is not None:
-            self.master.configure(self.active_text_object, text=text)
+        self._request_redraw()
 
     def _configure_position(self, position):
-        standard_methods.update_positions(self, position[0], position[1])
+        self._position = [int(position[0]), int(position[1])]
+        self._request_redraw()
 
     # Default configure behavior
     def configure(self, **kwargs):

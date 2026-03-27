@@ -300,9 +300,9 @@ class Animation:
 
             # Force an update by calling place which will update the visual representation
             self.widget.place(new_x, new_y)
-
+        else:
+            self.widget.update()
         self.current_values = updated_values
-        self.widget.update()
         self.step += direction
 
     def run(self) -> None:

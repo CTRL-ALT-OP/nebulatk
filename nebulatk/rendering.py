@@ -48,252 +48,163 @@ def _to_rgba(color):
     return color
 
 
-@dataclass
-class RenderObject:
-    kind: str
-    data: dict
-    state: str = "normal"
-
-
-class PILSurface:
-    def __init__(self, width, height, x=0, y=0):
-        self.width = int(width)
-        self.height = int(height)
-        self.x = int(x)
-        self.y = int(y)
-        self.objects = {}
-        self._next_id = 1
-        self._z_order = []
-        self.dirty = True
-
-    def _new_id(self):
-        _id = self._next_id
-        self._next_id += 1
-        return _id
-
-    def create_image(self, x, y, image, state="normal"):
-        pil_image = getattr(image, "image", image)
-        if pil_image is not None and getattr(pil_image, "mode", None) != "RGBA":
-            pil_image = pil_image.convert("RGBA")
-        _id = self._new_id()
-        self.objects[_id] = RenderObject(
-            kind="image",
-            data={"x": int(x), "y": int(y), "image": pil_image},
-            state=state,
-        )
-        self._z_order.append(_id)
-        self.dirty = True
-        return _id, image
-
-    def create_rectangle(
-        self,
-        x,
-        y,
-        width,
-        height=0,
-        fill=None,
-        border_width=0,
-        outline=None,
-        state="normal",
-    ):
-        _id = self._new_id()
-        self.objects[_id] = RenderObject(
-            kind="rectangle",
-            data={
-                "x1": int(x),
-                "y1": int(y),
-                "x2": int(width),
-                "y2": int(height),
-                "fill": _to_rgba(fill),
-                "outline": _to_rgba(outline),
-                "border_width": int(border_width or 0),
-            },
-            state=state,
-        )
-        self._z_order.append(_id)
-        self.dirty = True
-        return _id, None
-
-    def create_text(
-        self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
-    ):
-        _id = self._new_id()
-        self.objects[_id] = RenderObject(
-            kind="text",
-            data={
-                "x": int(x),
-                "y": int(y),
-                "text": text,
-                "font": font,
-                "fill": _to_rgba(fill),
-                "anchor": anchor,
-                "angle": angle,
-            },
-            state=state,
-        )
-        self._z_order.append(_id)
-        self.dirty = True
-        return _id, None
-
-    def move(self, _object, x, y):
-        if _object in self.objects:
-            data = self.objects[_object].data
-            for k in ("x", "x1", "x2"):
-                if k in data:
-                    data[k] += int(x)
-            for k in ("y", "y1", "y2"):
-                if k in data:
-                    data[k] += int(y)
-            self.dirty = True
-
-    def object_place(self, _object, x, y):
-        if _object in self.objects:
-            obj = self.objects[_object]
-            data = obj.data
-            if obj.kind == "rectangle":
-                w = data["x2"] - data["x1"]
-                h = data["y2"] - data["y1"]
-                data["x1"] = int(x)
-                data["y1"] = int(y)
-                data["x2"] = int(x) + w
-                data["y2"] = int(y) + h
-            else:
-                data["x"] = int(x)
-                data["y"] = int(y)
-            self.dirty = True
-
-    def delete(self, _object):
-        if _object in self.objects:
-            del self.objects[_object]
-            if _object in self._z_order:
-                self._z_order.remove(_object)
-            self.dirty = True
-
-    def change_state(self, _object, state):
-        if _object in self.objects:
-            self.objects[_object].state = state
-            self.dirty = True
-
-    def configure(self, _object, **kwargs):
-        if _object in self.objects:
-            obj = self.objects[_object]
-            if obj.kind == "image" and "image" in kwargs:
-                new_image = getattr(kwargs["image"], "image", kwargs["image"])
-                if new_image is not None and getattr(new_image, "mode", None) != "RGBA":
-                    new_image = new_image.convert("RGBA")
-                kwargs["image"] = new_image
-            self.objects[_object].data.update(kwargs)
-            self.dirty = True
-
-    def render(self):
-        frame = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        for _id in self._z_order:
-            obj = self.objects.get(_id)
-            if obj is None or obj.state == "hidden":
-                continue
-            if obj.kind == "image":
-                img = obj.data["image"]
-                if img is not None:
-                    x = obj.data["x"]
-                    y = obj.data["y"]
-                    frame.alpha_composite(img, (x, y))
-            elif obj.kind == "rectangle":
-                # Draw shapes/text on an intermediate transparent layer, then
-                # alpha composite it. Drawing directly onto RGBA can replace
-                # destination pixels instead of blending with them.
-                layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-                layer_draw = ImageDraw.Draw(layer)
-                layer_draw.rectangle(
-                    [obj.data["x1"], obj.data["y1"], obj.data["x2"], obj.data["y2"]],
-                    fill=obj.data["fill"],
-                    outline=obj.data["outline"],
-                    width=obj.data["border_width"],
-                )
-                frame.alpha_composite(layer)
-            elif obj.kind == "text":
-                layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-                layer_draw = ImageDraw.Draw(layer)
-                try:
-                    font_size = max(1, int(obj.data["font"][1]))
-                    text_font = ImageFont.truetype("arial.ttf", font_size)
-                except Exception:
-                    text_font = ImageFont.load_default()
-                layer_draw.text(
-                    (obj.data["x"], obj.data["y"]),
-                    obj.data["text"],
-                    fill=obj.data["fill"],
-                    font=text_font,
-                    anchor={"center": "mm", "w": "lm", "e": "rm"}.get(
-                        obj.data["anchor"], "mm"
-                    ),
-                )
-                frame.alpha_composite(layer)
-        self.dirty = False
-        return frame
-
-
 class PILImageRenderer:
-    def __init__(self, width, height, fps=60):
+    def __init__(self, window, width, height, fps=60):
+        self.window = window
         self.width = int(width)
         self.height = int(height)
         self.fps = max(1, int(fps))
         self.frame_interval = 1.0 / self.fps
-        self.root_surface = PILSurface(self.width, self.height)
-        self.container_surfaces = {}
-        self._next_surface_id = 1
         self._last_render = 0.0
         self._last_frame = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        self.dirty = True
+        self._redraw_requested = True
 
-    def create_container_surface(self, width, height, x=0, y=0):
-        surface_id = self._next_surface_id
-        self._next_surface_id += 1
-        self.container_surfaces[surface_id] = PILSurface(width, height, x, y)
-        self.dirty = True
-        return surface_id
+    def request_redraw(self):
+        self._redraw_requested = True
 
-    def update_container_surface(
-        self, surface_id, x=None, y=None, width=None, height=None
-    ):
-        surface = self.container_surfaces.get(surface_id)
-        if not surface:
+    def _safe_attr(self, obj, name, default=None):
+        try:
+            return getattr(obj, name)
+        except Exception:
+            return default
+
+    def _resolve_image(self, widget):
+        slot = self._safe_attr(widget, "_active_image_slot", "image_object")
+        fallback = {
+            "hover_object_active": ["active_hover_image", "hover_image", "active_image", "image"],
+            "hover_object": ["hover_image", "image"],
+            "active_object": ["active_image", "image"],
+            "image_object": ["image"],
+        }
+        for attr in fallback.get(slot, ["image"]):
+            value = self._safe_attr(widget, attr, None)
+            if value is not None:
+                return self._safe_attr(value, "image", value)
+        return None
+
+    def _resolve_fill(self, widget):
+        slot = self._safe_attr(widget, "_active_bg_slot", "bg_object")
+        fallback = {
+            "bg_object_hover_active": ["active_hover_fill", "hover_fill", "active_fill", "fill"],
+            "bg_object_hover": ["hover_fill", "fill"],
+            "bg_object_active": ["active_fill", "fill"],
+            "bg_object": ["fill"],
+        }
+        for attr in fallback.get(slot, ["fill"]):
+            value = self._safe_attr(widget, attr, None)
+            if value is not None:
+                return _to_rgba(value)
+        return None
+
+    def _resolve_text_fill(self, widget):
+        slot = self._safe_attr(widget, "_active_text_slot", "text_object")
+        if slot == "active_text_object":
+            return _to_rgba(
+                self._safe_attr(widget, "active_text_color", None)
+                or self._safe_attr(widget, "text_color", None)
+            )
+        return _to_rgba(self._safe_attr(widget, "text_color", None))
+
+    def _draw_widget(self, frame, widget, parent_x, parent_y, parent_visible=True):
+        visible = (
+            parent_visible
+            and self._safe_attr(widget, "visible", True)
+            and self._safe_attr(widget, "_render_visible", True)
+        )
+        abs_x = parent_x + int(self._safe_attr(widget, "x", 0) or 0)
+        abs_y = parent_y + int(self._safe_attr(widget, "y", 0) or 0)
+        if not visible:
             return
-        if x is not None:
-            surface.x = int(x)
-        if y is not None:
-            surface.y = int(y)
-        if width is not None and height is not None:
-            if surface.width != int(width) or surface.height != int(height):
-                surface.width = int(width)
-                surface.height = int(height)
-                surface.dirty = True
-        self.dirty = True
 
-    def remove_container_surface(self, surface_id):
-        if surface_id in self.container_surfaces:
-            del self.container_surfaces[surface_id]
-            self.dirty = True
+        width = int(self._safe_attr(widget, "width", 0) or 0)
+        height = int(self._safe_attr(widget, "height", 0) or 0)
+        border_width = int(self._safe_attr(widget, "border_width", 0) or 0)
+        outline = _to_rgba(self._safe_attr(widget, "border", None))
 
-    def needs_redraw(self):
-        if self.dirty or self.root_surface.dirty:
-            return True
-        return any(surface.dirty for surface in self.container_surfaces.values())
+        fill = self._resolve_fill(widget)
+        if width > 0 and height > 0 and (fill is not None or (outline is not None and border_width > 0)):
+            layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+            layer_draw = ImageDraw.Draw(layer)
+            layer_draw.rectangle(
+                [abs_x, abs_y, abs_x + width, abs_y + height],
+                fill=fill,
+                outline=outline,
+                width=border_width,
+            )
+            frame.alpha_composite(layer)
+
+        img = self._resolve_image(widget)
+        if img is not None:
+            if getattr(img, "mode", None) != "RGBA":
+                img = img.convert("RGBA")
+            frame.alpha_composite(
+                img,
+                (abs_x + border_width, abs_y + border_width),
+            )
+
+        text = self._safe_attr(widget, "text", "")
+        font_spec = self._safe_attr(widget, "font", None)
+        if text not in ("", None) and font_spec is not None:
+            try:
+                font_size = max(1, int(font_spec[1]))
+                text_font = ImageFont.truetype("arial.ttf", font_size)
+            except Exception:
+                text_font = ImageFont.load_default()
+            justify = self._safe_attr(widget, "justify", "center")
+            if justify == "left":
+                text_x = abs_x
+                anchor = "lm"
+            elif justify == "right":
+                text_x = abs_x + width
+                anchor = "rm"
+            else:
+                text_x = abs_x + (width / 2)
+                anchor = "mm"
+            text_y = abs_y + (height / 2)
+            layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+            layer_draw = ImageDraw.Draw(layer)
+            layer_draw.text(
+                (text_x, text_y),
+                text,
+                fill=self._resolve_text_fill(widget),
+                font=text_font,
+                anchor=anchor,
+            )
+            frame.alpha_composite(layer)
+
+    def _render_children(self, frame, children, parent_x=0, parent_y=0, parent_visible=True):
+        # Widget lists are kept front-to-back for hit testing (index 0 is topmost).
+        # Rendering must be back-to-front so lower layers are painted first.
+        for child in reversed(children):
+            self._draw_widget(frame, child, parent_x, parent_y, parent_visible=parent_visible)
+            child_visible = (
+                parent_visible
+                and self._safe_attr(child, "visible", True)
+                and self._safe_attr(child, "_render_visible", True)
+            )
+            child_children = self._safe_attr(child, "children", [])
+            if child_children:
+                self._render_children(
+                    frame,
+                    child_children,
+                    parent_x + int(self._safe_attr(child, "x", 0) or 0),
+                    parent_y + int(self._safe_attr(child, "y", 0) or 0),
+                    parent_visible=child_visible,
+                )
 
     def render_if_due(self):
         now = time.time()
         if now - self._last_render < self.frame_interval:
             return None
-        if not self.needs_redraw():
+        if not self._redraw_requested:
             self._last_render = now
             return None
 
         frame = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        frame.alpha_composite(self.root_surface.render(), (0, 0))
-        for surface in self.container_surfaces.values():
-            frame.alpha_composite(surface.render(), (surface.x, surface.y))
+        self._render_children(frame, self.window.children, parent_x=0, parent_y=0, parent_visible=True)
         self._last_render = now
         self._last_frame = frame
-        self.dirty = False
+        self._redraw_requested = False
         return frame
 
     @property

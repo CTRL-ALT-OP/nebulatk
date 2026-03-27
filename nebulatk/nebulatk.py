@@ -128,6 +128,7 @@ class _window_internal(threading.Thread, Component):
         self._ui_queue = std_queue.Queue()
         self._ui_queue_signal_scheduled = False
         self._ui_queue_lock = threading.Lock()
+        self._redraw_needed = True
 
     @property
     def taskbar_manager(self):
@@ -262,15 +263,13 @@ class _window_internal(threading.Thread, Component):
         for child in children:
             if not bounds_manager.check_hit(child, x, y):
                 continue
-            if type(child).__name__ == "Container":
-                local_x = x - child.x
-                local_y = y - child.y
-                nested = self._find_deepest_hit(child.children, local_x, local_y)
+            nested_children = getattr(child, "children", [])
+            if nested_children:
+                nested = self._find_deepest_hit(nested_children, x, y)
                 if nested is not None:
                     return nested
-            if not getattr(child, "can_focus", True):
-                continue
-            return child
+            if getattr(child, "can_focus", True):
+                return child
         return None
 
     # NOTE: CREATION HANDLERS
@@ -321,80 +320,13 @@ class _window_internal(threading.Thread, Component):
         if not self._ui_queue.empty() and self.root is not None:
             self._signal_ui_queue()
 
-    # Wrapper for canvas.create_image method
-    def create_image(self, x, y, image, state="normal"):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.root_surface.create_image(x, y, image, state=state)
-        )
+    def _mark_redraw_needed(self):
+        self._redraw_needed = True
+        if self.renderer is not None and hasattr(self.renderer, "request_redraw"):
+            self.renderer.request_redraw()
 
-    # Wrapper for canvas.create_rectangle method
-    def create_rectangle(
-        self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
-    ):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.root_surface.create_rectangle(
-                x,
-                y,
-                widt,
-                height,
-                fill=fill,
-                border_width=border_width,
-                outline=outline,
-                state=state,
-            )
-        )
-
-    # Wrapper for canvas.create_text method
-    def create_text(
-        self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
-    ):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.root_surface.create_text(
-                x,
-                y,
-                text=text,
-                font=font,
-                fill=fill,
-                anchor=anchor,
-                state=state,
-                angle=angle,
-            )
-        )
-
-    # Wrapper for canvas.move method
-    def move(self, _object, x, y):
-        self._execute_in_window_thread(
-            lambda: (
-                self.renderer.root_surface.move(_object, x, y),
-                setattr(self.renderer, "dirty", True),
-            )
-        )
-
-    def object_place(self, _object, x, y):
-        self._execute_in_window_thread(
-            lambda: (
-                self.renderer.root_surface.object_place(_object, x, y),
-                setattr(self.renderer, "dirty", True),
-            )
-        )
-
-    # Wrapper for canvas.delete method
-    def delete(self, _object):
-        self._execute_in_window_thread(
-            lambda: (
-                self.renderer.root_surface.delete(_object),
-                setattr(self.renderer, "dirty", True),
-            )
-        )
-
-    # Wrapper for canvas.change_state method
-    def change_state(self, _object, state):
-        self._execute_in_window_thread(
-            lambda: (
-                self.renderer.root_surface.change_state(_object, state),
-                setattr(self.renderer, "dirty", True),
-            )
-        )
+    def request_redraw(self):
+        self._execute_in_window_thread(self._mark_redraw_needed, wait=False)
 
     # NOTE: Other methods
 
@@ -453,7 +385,7 @@ class _window_internal(threading.Thread, Component):
                 override=self.override,
             )
             self.renderer = rendering.PILImageRenderer(
-                self.canvas_width, self.canvas_height, fps=self.fps
+                self, self.canvas_width, self.canvas_height, fps=self.fps
             )
             self.display = rendering.OpenGLImageDisplay(
                 self.root, self.canvas_width, self.canvas_height
@@ -526,7 +458,7 @@ class _window_internal(threading.Thread, Component):
             self.root.geometry(f"{self.width}x{self.height}")
             # Keep renderer/canvas dimensions fixed so window resize does not
             # scale existing content.
-            self.renderer.dirty = True
+            self._mark_redraw_needed()
 
         self._execute_in_window_thread(_apply_resize)
 
@@ -560,7 +492,6 @@ class _window_internal(threading.Thread, Component):
         return self
 
     # Add configure method similar to widget configure
-    # Also Wrapper for canvas.configure method
     def configure(self, _object=None, **kwargs):
         """Configure window properties.
 
@@ -573,13 +504,7 @@ class _window_internal(threading.Thread, Component):
         Returns:
             self: Returns self for method chaining
         """
-        if _object:
-            self._execute_in_window_thread(
-                lambda: (
-                    self.renderer.root_surface.configure(_object, **kwargs),
-                    setattr(self.renderer, "dirty", True),
-                )
-            )
+        if _object is not None:
             return self
 
         if "width" in kwargs or "height" in kwargs:
@@ -599,6 +524,8 @@ class _window_internal(threading.Thread, Component):
                     lambda: self.root.resizable(self.resizable[0], self.resizable[1])
                 )
 
+        self.request_redraw()
+
         return self
 
     def update(self):
@@ -615,6 +542,7 @@ class _window_internal(threading.Thread, Component):
         frame = self.renderer.render_if_due()
         if frame is not None:
             self.display.show_frame(frame)
+            self._redraw_needed = False
         self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
 
     def begin_render_batch(self):
@@ -622,103 +550,6 @@ class _window_internal(threading.Thread, Component):
 
     def end_render_batch(self):
         self._render_batch_depth = max(0, self._render_batch_depth - 1)
-
-    # Container surface operations are also serialized through the window queue.
-    def create_container_surface(self, width, height, x=0, y=0):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.create_container_surface(width, height, x=x, y=y)
-        )
-
-    def update_container_surface(self, surface_id, x=None, y=None, width=None, height=None):
-        self._execute_in_window_thread(
-            lambda: self.renderer.update_container_surface(
-                surface_id, x=x, y=y, width=width, height=height
-            )
-        )
-        self.renderer.dirty = True
-
-    def remove_container_surface(self, surface_id):
-        self._execute_in_window_thread(
-            lambda: self.renderer.remove_container_surface(surface_id)
-        )
-
-    def container_create_image(self, surface_id, x, y, image, state="normal"):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].create_image(
-                x, y, image, state=state
-            )
-        )
-
-    def container_create_rectangle(
-        self,
-        surface_id,
-        x,
-        y,
-        width,
-        height=0,
-        fill=0,
-        border_width=0,
-        outline=None,
-        state="normal",
-    ):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].create_rectangle(
-                x,
-                y,
-                width,
-                height,
-                fill=fill,
-                border_width=border_width,
-                outline=outline,
-                state=state,
-            )
-        )
-
-    def container_create_text(
-        self, surface_id, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
-    ):
-        return self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].create_text(
-                x,
-                y,
-                text=text,
-                font=font,
-                fill=fill,
-                anchor=anchor,
-                state=state,
-                angle=angle,
-            )
-        )
-
-    def container_move(self, surface_id, _object, x, y):
-        self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].move(_object, x, y)
-        )
-        self.renderer.dirty = True
-
-    def container_object_place(self, surface_id, _object, x, y):
-        self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].object_place(_object, x, y)
-        )
-        self.renderer.dirty = True
-
-    def container_delete(self, surface_id, _object):
-        self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].delete(_object)
-        )
-        self.renderer.dirty = True
-
-    def container_change_state(self, surface_id, _object, state):
-        self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].change_state(_object, state)
-        )
-        self.renderer.dirty = True
-
-    def container_configure(self, surface_id, _object, **kwargs):
-        self._execute_in_window_thread(
-            lambda: self.renderer.container_surfaces[surface_id].configure(_object, **kwargs)
-        )
-        self.renderer.dirty = True
 
 
 def Window(
@@ -936,7 +767,14 @@ def __main__():
         )
         anim_group.start()
 
-    btn6 = Button(window, image=img)
+    btn6 = Button(
+        window,
+        image=img,
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
+        command=lambda: print("clicked", btn6.width),
+    )
     btn6.place(0, 0)
     sleep(2)
     print("resizing window")

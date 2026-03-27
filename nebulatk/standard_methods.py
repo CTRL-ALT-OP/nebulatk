@@ -171,89 +171,111 @@ def get_triangle_area(a, b, c):
 
 
 # ============================================================ FLOPS ======================================================================
-# NOTE: Flops hide all items of a type, and shows the selected item
+# NOTE: Flops now update widget state and active variants. They no longer
+# toggle visibility between multiple backend render objects.
+
+
+def _globally_visible(_object):
+    global_visible = True
+    root = _object
+    while hasattr(root, "root") and root.root != root:
+        if not getattr(root, "visible", True):
+            global_visible = False
+            break
+        root = root.root
+    return (
+        global_visible
+        and getattr(_object, "visible", True)
+        and getattr(_object, "_render_visible", True)
+    )
+
+
+def _resolve_image_for_slot(_object, slot):
+    image_by_slot = {
+        "image_object": "image",
+        "active_object": "active_image",
+        "hover_object": "hover_image",
+        "hover_object_active": "active_hover_image",
+    }
+    fallback = {
+        "hover_object_active": ["active_hover_image", "hover_image", "active_image", "image"],
+        "hover_object": ["hover_image", "image"],
+        "active_object": ["active_image", "image"],
+        "image_object": ["image"],
+    }
+    for image_attr in fallback.get(slot, [image_by_slot.get(slot, "image")]):
+        if check(_object, image_attr):
+            return getattr(_object, image_attr)
+    return None
+
+
+def _resolve_bg_for_slot(_object, slot):
+    color_by_slot = {
+        "bg_object": "fill",
+        "bg_object_active": "active_fill",
+        "bg_object_hover": "hover_fill",
+        "bg_object_hover_active": "active_hover_fill",
+    }
+    fallback = {
+        "bg_object_hover_active": ["active_hover_fill", "hover_fill", "active_fill", "fill"],
+        "bg_object_hover": ["hover_fill", "fill"],
+        "bg_object_active": ["active_fill", "fill"],
+        "bg_object": ["fill"],
+    }
+    for color_attr in fallback.get(slot, [color_by_slot.get(slot, "fill")]):
+        value = getattr(_object, color_attr, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _resolve_text_fill_for_slot(_object, slot):
+    if slot == "active_text_object":
+        return getattr(_object, "active_text_color", None) or getattr(
+            _object, "text_color", None
+        )
+    return getattr(_object, "text_color", None)
+
+
+def _request_redraw(_object):
+    requester = getattr(_object, "master", None)
+    if requester is not None and hasattr(requester, "request_redraw"):
+        requester.request_redraw()
+
+
+def _sync_image_state(_object):
+    _request_redraw(_object)
+
+
+def _sync_bg_state(_object):
+    _request_redraw(_object)
+
+
+def _sync_text_state(_object):
+    _request_redraw(_object)
 
 
 def image_flop(_object, val):
-    """Hides all images, and shows the selected image
-
-    Args:
-        _object (nebulatk.Widget): widget
-        val (str): Item to show
-    """
-
-    global_visible = True
-    root = _object
-    while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
-            global_visible = False
-            break
-        root = root.root
-
-    visible = "normal" if global_visible else "hidden"
-    if check(_object, val):
-        for obj in IMAGE_OBJECTS:
-            if hasattr(_object, obj):
-                if val == obj:
-                    _object.master.change_state(getattr(_object, obj), state=visible)
-                else:
-                    _object.master.change_state(getattr(_object, obj), state="hidden")
+    """Select active image variant for the widget."""
+    _object._active_image_slot = val
+    _sync_image_state(_object)
 
 
 def bg_flop(_object, val):
-    """Hides all background objects, and shows the selected background object
-
-    Args:
-        _object (nebulatk.Widget): widget
-        val (str): Item to show
-    """
-
-    global_visible = True
-    root = _object
-    while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
-            global_visible = False
-            break
-        root = root.root
-
-    visible = "normal" if global_visible else "hidden"
-    for obj in BG_OBJECTS:
-        if check(_object, obj):
-            if val == obj:
-                _object.master.change_state(getattr(_object, obj), state=visible)
-            else:
-                _object.master.change_state(getattr(_object, obj), state="hidden")
+    """Select active background variant for the widget."""
+    _object._active_bg_slot = val
+    _sync_bg_state(_object)
 
 
 def text_flop(_object, val):
-    """Hides all text objects, and shows the selected text object
-
-    Args:
-        _object (nebulatk.Widget): widget
-        val (str): Item to show
-    """
-
-    global_visible = True
-    root = _object
-    while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
-            global_visible = False
-            break
-        root = root.root
-
-    visible = "normal" if global_visible else "hidden"
-    if hasattr(_object, val) and getattr(_object, val) is not None:
-        for obj in TEXT_OBJECTS:
-            if hasattr(_object, obj):
-                if val == obj:
-                    _object.master.change_state(getattr(_object, obj), state=visible)
-                else:
-                    _object.master.change_state(getattr(_object, obj), state="hidden")
+    """Select active text style variant for the widget."""
+    _object._active_text_slot = val
+    _sync_text_state(_object)
 
 
 def _first_available_bg(_object, candidates):
     for candidate in candidates:
-        if candidate and check(_object, candidate):
+        if candidate:
             return candidate
     return None
 
@@ -277,23 +299,16 @@ def _apply_background_state(_object, hovering=None):
 
 
 def flop_off(_object):
-    """Hides all objects
-
-    Args:
-        _object (nebulatk.Widget): widget
-    """
-    for obj in ALL_OBJECTS:
-        if hasattr(_object, obj):
-            _object.master.change_state(getattr(_object, obj), state="hidden")
+    """Hide widget render output without backend state toggles."""
+    _object._render_visible = False
+    _sync_image_state(_object)
+    _sync_bg_state(_object)
+    _sync_text_state(_object)
 
 
 def flop_on(_object):
-    """Shows all objects
-
-    Args:
-        _object (nebulatk.Widget): widget
-    """
-    # visible = "normal" if _object.visible else "hidden"
+    """Show widget render output and sync active variants."""
+    _object._render_visible = True
     if _object.state:
         if _object.hovering:
             image_flop(_object, "hover_object_active")
@@ -305,7 +320,7 @@ def flop_on(_object):
         image_flop(_object, "image_object")
     _apply_background_state(_object)
 
-    if _object.active_text_object is not None and _object.state:
+    if getattr(_object, "active_text_color", None) is not None and _object.state:
         text_flop(_object, "active_text_object")
     else:
         text_flop(_object, "text_object")
@@ -325,33 +340,20 @@ def delete(_object, delayed=False):
     Args:
         _object (nebulatk.Widget): widget
     """
-    # Iterate through all items in the widget and delete them if they exist
-    if delayed and _object._scheduled_deletion != []:
-        for obj in _object._scheduled_deletion:
-            _object.master.delete(obj)
-        _object._scheduled_deletion = []
+    if delayed:
         return
-
     for obj in ALL_OBJECTS:
-        if check(_object, obj):
-            if delayed:
-                _object._scheduled_deletion.append(getattr(_object, obj))
-            else:
-                _object.master.delete(getattr(_object, obj))
+        if hasattr(_object, obj):
             setattr(_object, obj, None)
+    _request_redraw(_object)
 
 
 # ------------------------------------------------------------ DELETION SCHEDULING BEHAVIOUR -----------------------------------------------
 def schedule_delete(_object):
-    for obj in ALL_OBJECTS:
-        if check(_object, obj):
-            _object._scheduled_deletion.append(getattr(_object, obj))
-            setattr(_object, obj, None)
+    return
 
 
 def delete_scheduled(_object):
-    for obj in _object._scheduled_deletion:
-        _object.master.delete(obj)
     _object._scheduled_deletion = []
 
 
@@ -367,7 +369,7 @@ def hovered_standard(_object):
     if _object.visible:
         image_flop(_object, "hover_object")
         _apply_background_state(_object, hovering=True)
-        if _object.active_text_object is not None:
+        if getattr(_object, "active_text_color", None) is not None:
             text_flop(_object, "active_text_object")
 
 
@@ -396,7 +398,7 @@ def hover_end(_object):
             image_flop(_object, "active_object")
         else:
             image_flop(_object, "image_object")
-            if _object.active_text_object is not None:
+            if getattr(_object, "active_text_color", None) is not None:
                 text_flop(_object, "text_object")
         _apply_background_state(_object, hovering=False)
 
@@ -436,17 +438,14 @@ def toggle_object_toggle(_object):
     else:
         image_flop(_object, "image_object")
     _apply_background_state(_object)
-    if check(_object, "bg_object_active"):
-        if not _object.state:
-            bg_flop(_object, "bg_object")
+    if not _object.state:
+        bg_flop(_object, "bg_object")
+    else:
+        bg_flop(_object, "bg_object_active")
 
-        else:
-            bg_flop(_object, "bg_object_active")
-
-    if check(_object, "active_text_object"):
+    if getattr(_object, "active_text_color", None) is not None:
         if not _object.state:
             text_flop(_object, "text_object")
-
         else:
             text_flop(_object, "active_text_object")
 
@@ -486,34 +485,6 @@ def clicked_toggle(_object):
 # ------------------------------------------------------------ POSITION BEHAVIOURS ----------------------------------------------------------
 
 
-def _update_position(_object, item, x, y, old_x, old_y):
-    """Internal update_position method
-
-    Args:
-        _object (nebulatk.Widget): widget
-        item (str): item
-        x (int): x position
-        y (int): y position
-    """
-    if check(_object, item):
-        if item.find("image") != -1:
-            x += _object.border_width / 2
-            y += _object.border_width / 2
-        elif item.find("text") != -1:
-            if _object.justify == "center":
-                x = x + (_object.width / 2)
-
-            elif _object.justify == "left":
-                x = x
-
-            elif _object.justify == "right":
-                x = x + _object.width
-
-            # Set y offset
-            y = y + (_object.height / 2)
-        _object.master.object_place(getattr(_object, item), x, y)
-
-
 def update_positions(_object, x, y, avoid_slider=False):
     """Update positions of all objects
 
@@ -523,13 +494,8 @@ def update_positions(_object, x, y, avoid_slider=False):
         y (int): y position
         avoid_slider (bool, optional): Request to avoid touching the slider background objects. Defaults to False.
     """
-    x, y = rel_position_to_abs(_object, x, y)
-    old_x, old_y = rel_position_to_abs(_object, _object.x, _object.y)
-
-    for obj in ALL_OBJECTS:
-        if obj == "slider_bg_object" and avoid_slider:
-            continue
-        _update_position(_object, obj, x, y, old_x, old_y)
+    _object._position = [int(x), int(y)]
+    _request_redraw(_object)
 
 
 # ------------------------------------------------------------ PLACEMENT BEHAVIOURS ---------------------------------------------------------
@@ -541,169 +507,10 @@ def place_bulk(_object, x, y):
     Args:
         _object (nebulatk.Widget): widget
     """
-    x, y = rel_position_to_abs(_object, x, y)
-    # Only place background rectangles if there == a fill or border
-    # Place slider_bg_object
-    # colors = _object._colors
-    global_visible = True
-    root = _object
-    while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
-            global_visible = False
-            break
-        root = root.root
-
-    state = "normal" if global_visible else "hidden"
-    """if colors["slider_fill"] is not None or (
-        colors["slider_border"] is not None and _object.slider_border_width != 0
-    ):
-        _object.slider_bg_object = _object.master.create_rectangle(
-            x,
-            y + _object.height / 2 - _object.slider_height / 2,
-            x + _object.maximum + _object.width,
-            y + _object.height / 2 - _object.slider_height / 2 + _object.slider_height,
-            fill=_object.slider_fill,
-            border_width=_object.slider_border_width,
-            outline=_object.slider_border,
-            state=state,
-        )"""
-
-    object_state = getattr(_object, "state", False)
-    # Place bg_object
-    if _object.fill is not None or (
-        _object.border is not None and _object.border_width != 0
-    ):
-        _object.bg_object, img = _object.master.create_rectangle(
-            x,
-            y,
-            x + _object.width,
-            y + _object.height,
-            fill=_object.fill,
-            border_width=_object.border_width,
-            outline=_object.border,
-            state="hidden" if object_state else state,
-        )
-        _object._images_initialized["bg_object"] = img
-
-    # Place bg_object_active
-    if _object.active_fill is not None:
-        _object.bg_object_active, img = _object.master.create_rectangle(
-            x,
-            y,
-            x + _object.width,
-            y + _object.height,
-            fill=_object.active_fill,
-            border_width=_object.border_width,
-            outline=_object.border,
-            state=state if object_state else "hidden",
-        )
-        _object._images_initialized["bg_object_active"] = img
-
-    # Place bg_object_hover
-    if _object.hover_fill is not None or (
-        _object.border is not None and _object.border_width != 0
-    ):
-        _object.bg_object_hover, img = _object.master.create_rectangle(
-            x,
-            y,
-            x + _object.width,
-            y + _object.height,
-            fill=_object.hover_fill,
-            border_width=_object.border_width,
-            outline=_object.border,
-            state="hidden",
-        )
-        _object._images_initialized["bg_object_hover"] = img
-
-    # Place bg_object_hover_active
-    if _object.active_hover_fill is not None or (
-        _object.border is not None and _object.border_width != 0
-    ):
-        _object.bg_object_hover_active, img = _object.master.create_rectangle(
-            x,
-            y,
-            x + _object.width,
-            y + _object.height,
-            fill=_object.active_hover_fill,
-            border_width=_object.border_width,
-            outline=_object.border,
-            state="hidden",
-        )
-        _object._images_initialized["bg_object_hover_active"] = img
-
-    # Place images
-    for img in ["image", "active_image", "hover_image", "active_hover_image"]:
-        if check(_object, img):
-            state = "hidden"
-            img_object = img.split("_")[0] + "_object"
-            if img == "image" and global_visible and not object_state:
-                state = "normal"
-            elif img == "active_image" and global_visible and object_state:
-                state = "normal"
-            if img == "active_hover_image":
-                img_object = "hover_object_active"
-
-            id, image = _object.master.create_image(
-                x + _object.border_width,
-                y + _object.border_width,
-                getattr(_object, img),
-                state=state,
-            )
-            setattr(
-                _object,
-                img_object,
-                id,
-            )
-            _object._images_initialized[img] = image
-
-    # Place text objects
-    if _object.text != "":
-        generate_text(_object, x, y)
+    _object._position = [int(x), int(y)]
+    flop_on(_object)
+    _request_redraw(_object)
 
 
 def generate_text(_object, x, y):
-    global_visible = True
-    root = _object
-    while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
-            global_visible = False
-            break
-        root = root.root
-
-    state = "normal" if global_visible else "hidden"
-    # Set x offset and anchor based on justify
-    if _object.justify == "center":
-        local_x = x + (_object.width / 2)
-        anchor = "center"
-
-    elif _object.justify == "left":
-        local_x = x
-        anchor = "w"
-
-    elif _object.justify == "right":
-        local_x = x + _object.width
-        anchor = "e"
-
-    # Set y offset
-    local_y = y + (_object.height / 2)
-
-    _object.text_object, img = _object.master.create_text(
-        local_x,
-        local_y,
-        text=_object.text,
-        font=_object.font,
-        fill=_object.text_color,
-        anchor=anchor,
-        state=state,
-        angle=_object.orientation,
-    )
-    if _object.active_text_color is not None:
-        _object.active_text_object, img = _object.master.create_text(
-            local_x,
-            local_y,
-            text=_object.text,
-            font=_object.font,
-            fill=_object.active_text_color,
-            anchor=anchor,
-            state="hidden",
-        )
+    _request_redraw(_object)
