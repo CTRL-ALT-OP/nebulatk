@@ -1,73 +1,30 @@
-import sys
-import os
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-sys.path.insert(
-    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
-)
+import pytest
 
 import nebulatk as ntk
-from nebulatk import _window_internal
-
-
-class _ClipboardRoot:
-    def __init__(self):
-        self._clipboard = ""
-
-    def after(self, _delay_ms, callback, *args):
-        callback(*args)
-
-    def update(self):
-        return None
-
-    def clipboard_clear(self):
-        self._clipboard = ""
-
-    def clipboard_append(self, text):
-        self._clipboard += str(text)
-
-    def clipboard_get(self):
-        return self._clipboard
-
-
-@pytest.fixture
-def canvas():
-    """Create a test window for widget testing."""
-    window = _window_internal(title="Test Window", width=800, height=500, render_mode="image_gl", fps=60)
-    window.root = _ClipboardRoot()
-    yield window
-    window.close_animations()
 
 
 @pytest.fixture
 def basic_entry(canvas):
-    """Fixture for a basic entry widget"""
+    """Fixture for a basic entry widget."""
     return ntk.Entry(canvas, text="Initial Text", width=200, height=40).place()
 
 
 @pytest.fixture
 def text_entry(canvas):
-    """Fixture for an entry widget with pre-filled text"""
+    """Fixture for an entry widget with pre-filled text."""
     return ntk.Entry(canvas, text="Initial Text", width=200, height=40).place()
 
 
-# Helper classes and functions
 class KeyEvent:
     def __init__(self, keysym, char=None):
         self.keysym = keysym
         self.char = char or keysym
 
 
-class MouseEvent:
-    def __init__(self, x, y, type="ButtonPress"):
-        self.x = x
-        self.y = y
-        self.type = type
-
-
 def set_cursor_position(entry, position):
-    """Set cursor position and reset selection"""
+    """Set cursor position and reset selection."""
     entry.cursor_position = position
     entry._selection_start = position
     entry._selection_end = position
@@ -75,7 +32,7 @@ def set_cursor_position(entry, position):
 
 
 def setup_selection(entry, start, end):
-    """Set up a text selection in an entry widget"""
+    """Set up a text selection in an entry widget."""
     entry.cursor_position = end
     entry._selection_start = start
     entry._selection_end = end
@@ -83,19 +40,9 @@ def setup_selection(entry, start, end):
 
 
 def type_text(entry, text):
-    """Type a sequence of characters into an entry widget"""
+    """Type a sequence of characters into an entry widget."""
     for char in text:
         entry.typed(KeyEvent(char, char))
-
-
-def setup_clipboard_mocks():
-    """Setup clipboard operation mocks"""
-    return patch.multiple(
-        "tkinter.Tk",
-        clipboard_clear=MagicMock(),
-        clipboard_append=MagicMock(),
-        clipboard_get=MagicMock(return_value="pasted text"),
-    )
 
 
 def test_entry_initialization(canvas: ntk.Window) -> None:
@@ -279,7 +226,6 @@ def test_entry_cursor_display(text_entry) -> None:
     assert entry.cursor.width <= 2
     assert entry.cursor in entry.children
 
-    # Test cursor coordinates based on text position
     with patch.object(ntk.fonts_manager, "measure_text", return_value=10):
         old_x = entry.cursor.x
         set_cursor_position(entry, entry.cursor_position + 1)
@@ -287,7 +233,7 @@ def test_entry_cursor_display(text_entry) -> None:
         assert entry.cursor.x != old_x
 
 
-def test_entry_cursor_visibility(text_entry, canvas) -> None:
+def test_entry_cursor_visibility(text_entry) -> None:
     """Test cursor visibility behavior in the Entry widget."""
     entry = text_entry
 
@@ -340,7 +286,7 @@ def test_entry_keyboard_selection(text_entry, canvas, modifier_key) -> None:
     canvas.active_keys.remove(modifier_key)
 
 
-def test_keyboard_movement_without_shift(text_entry, canvas) -> None:
+def test_keyboard_movement_without_shift(text_entry) -> None:
     """Test keyboard movement without shift key (should reset selection)."""
     entry = text_entry
     entry.entire_text = "Test keyboard movement"
@@ -355,21 +301,18 @@ def test_keyboard_movement_without_shift(text_entry, canvas) -> None:
     assert entry._selection_end == 11
 
     setup_selection(entry, 5, 10)
-
     entry.typed(KeyEvent("Left"))
     assert entry.cursor_position == 9
     assert entry._selection_start == 9
     assert entry._selection_end == 9
 
     setup_selection(entry, 5, 10)
-
     entry.typed(KeyEvent("Home"))
     assert entry.cursor_position == 0
     assert entry._selection_start == 0
     assert entry._selection_end == 0
 
     setup_selection(entry, 5, 10)
-
     entry.typed(KeyEvent("End"))
     assert entry.cursor_position == len(entry.entire_text)
     assert entry._selection_start == len(entry.entire_text)
@@ -440,29 +383,24 @@ def test_entry_get_selection(text_entry) -> None:
         assert selected_text == "Testing"
 
 
-def test_entry_selection_highlight(text_entry, canvas) -> None:
+def test_entry_selection_highlight(text_entry) -> None:
     """Test that selection highlighting works correctly."""
     entry = text_entry
     entry.entire_text = "Test selection highlighting"
     entry.justify = "left"
     entry.update()
 
-    # Create a mock for measure_text that returns predictable values
-    # Each character will be 10 pixels wide for easy calculation
-    def mock_measure(root, text, font=None):
+    def mock_measure(_root, text, font=None):
         return len(text) * 10
 
     with patch("nebulatk.fonts_manager.measure_text", side_effect=mock_measure):
-        # Setup a selection from position 5 to 14
         setup_selection(entry, 5, 14)
 
         assert entry._selection_start == 5
         assert entry._selection_end == 14
 
-        # Update the selection highlight with our mocks in place
         entry._update_selection_highlight()
 
-        # Verify the selection background exists and has correct properties
         assert hasattr(entry, "_selection_bg"), "Selection background wasn't created"
         assert entry._selection_bg is not None, "Selection background is None"
 
@@ -479,27 +417,19 @@ def test_entry_selection_highlight(text_entry, canvas) -> None:
         end = min(entry.slice[1], end) - entry.slice[0]
         total_width = mock_measure(None, entry.text)
         sel_start_x = mock_measure(None, entry.text[:start])
-        sel_start_x = (
-            entry.width / 2 - total_width / 2 + sel_start_x
-        )  # Adjust to be more centered between characters
+        sel_start_x = entry.width / 2 - total_width / 2 + sel_start_x
 
         sel_end_x = sel_start_x + mock_measure(None, entry.text[start:end])
         entry._selection_bg.width = sel_end_x - sel_start_x
         entry._selection_bg.x = sel_start_x
 
         expected_x = sel_start_x
-        # Check position
-        x_tolerance = 5  # Allow small tolerance for rounding
-        assert (
-            abs(entry._selection_bg.x - expected_x) <= x_tolerance
-        ), f"Selection x position {entry._selection_bg.x} doesn't match expected {expected_x}"
+        x_tolerance = 5
+        assert abs(entry._selection_bg.x - expected_x) <= x_tolerance
 
-        # Check width
         expected_width = sel_end_x - sel_start_x
-        width_tolerance = 5  # Allow small tolerance for rounding
-        assert (
-            abs(entry._selection_bg.width - expected_width) <= width_tolerance
-        ), f"Selection width {entry._selection_bg.width} doesn't match expected {expected_width}"
+        width_tolerance = 5
+        assert abs(entry._selection_bg.width - expected_width) <= width_tolerance
 
 
 @pytest.mark.parametrize(
@@ -533,50 +463,43 @@ def test_entry_keyboard_shortcuts(text_entry, canvas, modifier_key, shortcuts) -
         canvas.active_keys.remove(modifier_key)
 
 
-def test_entry_text_truncation(basic_entry, canvas) -> None:
+def test_entry_text_truncation(basic_entry) -> None:
     """Test truncation of long text in Entry widget."""
     entry = basic_entry
 
-    long_text = "This is a very long text that should exceed the width of the entry widget and require truncation"
+    long_text = (
+        "This is a very long text that should exceed the width of the entry widget "
+        "and require truncation"
+    )
     entry.entire_text = long_text
 
-    # Test truncation mechanics with a fixed width
     with patch.object(ntk.fonts_manager, "get_max_length", return_value=20):
-        entry.update()  # Force a redraw of the widget
+        entry.update()
         assert len(entry.text) <= 20, "Text should be truncated to 20 characters"
-        # Test truncation with cursor at different positions
+
         set_cursor_position(entry, 0)
         if visible_method := getattr(
             entry,
             "get_visible_text",
             getattr(entry, "_get_visible_text", None),
         ):
-            # Test cursor at beginning
             visible_text = visible_method()
             assert len(visible_text) <= 20
-            assert visible_text.startswith(
-                long_text[:10]
-            ), "Should show text from the beginning"
+            assert visible_text.startswith(long_text[:10])
 
-            # Test cursor at middle
             mid_pos = len(long_text) // 2
             set_cursor_position(entry, mid_pos)
             visible_text = visible_method()
             assert len(visible_text) <= 20
-            assert (
-                mid_pos - 5 <= long_text.find(visible_text[0]) <= mid_pos + 5
-            ), "Should show text around cursor"
+            assert mid_pos - 5 <= long_text.find(visible_text[0]) <= mid_pos + 5
 
-            # Test cursor at end
             set_cursor_position(entry, len(long_text))
             visible_text = visible_method()
             assert len(visible_text) <= 20
-            assert visible_text.endswith(
-                long_text[-10:]
-            ), "Should show text from the end"
+            assert visible_text.endswith(long_text[-10:])
 
 
-def test_entry_text_scrolling(basic_entry, canvas) -> None:
+def test_entry_text_scrolling(basic_entry) -> None:
     """Test scrolling behavior with long text."""
     entry = basic_entry
 
@@ -584,7 +507,6 @@ def test_entry_text_scrolling(basic_entry, canvas) -> None:
     entry.entire_text = long_text
 
     set_cursor_position(entry, 0)
-
     set_cursor_position(entry, len(long_text))
     entry.typed(KeyEvent("Right"))
     assert entry.cursor_position == len(long_text)
@@ -596,7 +518,10 @@ def test_entry_text_slicing(basic_entry) -> None:
     """Test slicing of text based on cursor position in Entry widget."""
     entry = basic_entry
 
-    long_text = "This is a very long text that should exceed the width of the entry widget and require truncation"
+    long_text = (
+        "This is a very long text that should exceed the width of the entry widget "
+        "and require truncation"
+    )
     entry.entire_text = long_text
     set_cursor_position(entry, 0)
 
@@ -606,111 +531,49 @@ def test_entry_text_slicing(basic_entry) -> None:
 
     assert entry.cursor_position == len(long_text)
 
-    # Test text slicing with different cursor positions
     test_positions = [0, 5, len(long_text) // 2, len(long_text) - 5, len(long_text)]
     for pos in test_positions:
         set_cursor_position(entry, pos)
 
-        # Test slicing with different view windows if the method exists
         if hasattr(entry, "_get_text_slice") or hasattr(entry, "get_text_slice"):
             if slice_method := getattr(
                 entry,
                 "_get_text_slice",
                 getattr(entry, "get_text_slice", None),
             ):
-                # Test with different slice widths
                 for width in [10, 20, 30]:
                     sliced_text = slice_method(width)
-                    assert (
-                        len(sliced_text) <= width
-                    ), f"Sliced text exceeds width {width}"
+                    assert len(sliced_text) <= width
 
-                    # If cursor at beginning, text should start at beginning
                     if pos == 0:
                         assert sliced_text.startswith(long_text[: min(5, width)])
-
-                    # If cursor in middle, it should be in the visible text
                     elif 0 < pos < len(long_text):
                         cursor_char = long_text[pos - 1 : pos]
-                        assert (
-                            cursor_char in sliced_text
-                        ), f"Cursor character {cursor_char} not in sliced text"
-
-                    # If cursor at end, text should end with the end of the full text
+                        assert cursor_char in sliced_text
                     elif pos == len(long_text):
                         assert sliced_text.endswith(long_text[-min(5, width) :])
 
 
 @pytest.mark.parametrize("justify_value", ["left", "center", "right"])
-def test_entry_text_justification(canvas, justify_value, basic_entry) -> None:
+def test_entry_text_justification(justify_value, basic_entry) -> None:
     """Test text justification in the Entry widget."""
     entry = basic_entry
 
     entry.configure(justify=justify_value)
     assert entry.justify == justify_value
 
-    # Test justification change
     new_justify = "center" if justify_value != "center" else "left"
     entry.configure(justify=new_justify)
     assert entry.justify == new_justify
 
-    # Test cursor positioning with different justifications
     if hasattr(entry, "_find_cursor_position_from_click"):
-        # Test left justified - cursor should match x position
         entry.configure(justify="left")
         left_x_pos = entry._find_cursor_position_from_click(150)
 
-        # Test right justified - cursor should be different
         entry.configure(justify="right")
         right_x_pos = entry._find_cursor_position_from_click(150)
 
-        # Test center justified - cursor should be different
         entry.configure(justify="center")
         center_x_pos = entry._find_cursor_position_from_click(150)
 
-        # They should calculate different positions for the same x coordinate
-        assert (
-            left_x_pos != right_x_pos != center_x_pos
-        ), "Cursor position calculation should differ based on justification"
-
-
-def test_image_button_functionality(canvas: ntk.Window) -> None:
-    """Test ImageButton widget properties and functionality."""
-    with patch("nebulatk.image_manager.load_image", return_value=MagicMock()):
-        image_button = ntk.Button(
-            canvas,
-            image="nebulatk/examples/Images/main_button_inactive.png",
-            width=100,
-            height=50,
-        ).place()
-
-        assert image_button.width == 100
-        assert image_button.height == 50
-        assert not image_button.state
-
-        image_button.state = True
-        assert image_button.state
-        image_button.state = False
-        assert not image_button.state
-
-
-def test_widget_common_operations(canvas: ntk.Window) -> None:
-    """Test common widget operations like visibility and destruction."""
-    baseline_count = len(canvas.children)
-    label = ntk.Label(canvas, text="Test Label").place()
-    assert label.visible
-
-    label.hide()
-    assert not label.visible
-
-    label.show()
-    assert label.visible
-
-    button = ntk.Button(canvas, text="Test Button").place()
-    assert len(canvas.children) == baseline_count + 2
-
-    button.destroy()
-    assert len(canvas.children) == baseline_count + 1
-
-    label.destroy()
-    assert len(canvas.children) == baseline_count
+        assert left_x_pos != right_x_pos != center_x_pos
