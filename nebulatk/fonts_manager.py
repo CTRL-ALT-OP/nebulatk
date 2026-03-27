@@ -45,7 +45,7 @@ class Font:
             self.font = ("Helvetica", -1)
 
         # If only font name is specified
-        if type(font) is str:
+        elif type(font) is str:
             self.font = (font, 10)
 
         elif type(font) in (list, tuple):

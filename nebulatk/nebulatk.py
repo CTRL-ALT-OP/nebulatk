@@ -91,7 +91,7 @@ class _window_internal(threading.Thread, Component):
         self.hovered = None
         self.resizable = resizable
         self.override = override
-        self.render_mode = "image_gl"
+        self.render_mode = render_mode
         self.fps = fps
         self.updates_all = (
             False  # Whether updates to members update the widget automatically
@@ -147,7 +147,7 @@ class _window_internal(threading.Thread, Component):
 
     @taskbar_manager.setter
     def taskbar_manager(self, value):
-        return "Cannot set taskbar_manager"
+        raise AttributeError("taskbar_manager is read-only")
 
     def _normalize_background_color(self, color):
         if color is None:
@@ -168,19 +168,6 @@ class _window_internal(threading.Thread, Component):
         y = int(event.y)
 
         active_new = self._find_deepest_hit(self.children, x, y)
-        """
-        # Find the object that was clicked
-        # Check if there are any objects initialized at that position
-        if y in self.bounds:
-            # Iterate over all objects at that y coordinate
-            for i in self.bounds[y]:
-                # Check if the mouse was within that object's boundary
-                if x <= i[2] and x >= i[1]:
-                    # Object found
-                    # Set active_new and break
-                    active_new = i[0]
-                    break
-        """
         # If the new object is actually new, update the current active widget
         # self.active is used for things like detecting what widget to send keypresses to
         if active_new is not self.active:
@@ -221,24 +208,6 @@ class _window_internal(threading.Thread, Component):
 
         if hovered_new is not self.hovered and hovered_new is not None:
             hovered_new.hovered()
-        """
-        # Find the object that was hovered over
-        # Check if there are any objects initialized at that position
-        if y in self.bounds:
-            # Iterate over all objects at that y coordinate
-            for i in self.bounds[y]:
-                # Check if the mouse was within that object's boundary
-                if x <= i[2] and x >= i[1]:
-                    # Object found
-                    # If this object wasn't already being hovered over, trigger new object's hovered event
-                    if i[0] is not self.hovered:
-                        print("hovered")
-                        i[0].hovered()
-
-                    # Set hovered_new and break
-                    hovered_new = i[0]
-                    break
-        """
         # If the object wasn't already being hovered over, check that there was something being hovered over previously and trigger the old object's hover_end event
         if hovered_new is not self.hovered:
             if self.hovered is not None:
@@ -544,13 +513,7 @@ class _window_internal(threading.Thread, Component):
             self.running = False
 
         # schedule a periodic check of `self.running`,
-        # so that close() can break us out cleanly:
-        # print("exited")
-        # NOTE: The following code is an alternative, but broken, method of running mainloop
-        """while self.running:
-            self.root.update_idletasks()
-            self.root.update()
-            sleep(0.01)"""
+        # so that close() can break us out cleanly.
 
     # Add resize method to change window dimensions
     def resize(self, width=None, height=None):
@@ -932,103 +895,6 @@ def __main__():
     window.destroy()
     canvas.destroy()
     # window = Window()
-
-    """def trigger_custom_thumbnail():
-        window.taskbar_manager.SetThumbnailClip(0, 0, 100, 100)
-
-    btn = Button(
-        window,
-        width=100,
-        height=100,
-        mode="toggle",
-        border_width=2,
-        command=trigger_custom_thumbnail,
-    )
-    btn.place(0, 0)
-
-    def animate_btn():
-        btn.width = 100
-        btn.height = 100
-        btn.place(0, 0)
-        btn.update()
-        keyframes = [
-            (
-                1.0,
-                {"x": 50, "y": 50},
-                animation_controller.Curves.ease_in_quad,
-            ),  # Move to (50, 50) in 1s
-            (
-                1,
-                {"x": 100, "y": 100},
-                animation_controller.Curves.bounce,
-                1,
-            ),  # Then to (100, 100) in 0.5s
-            animation_controller.Animation(
-                btn,
-                {"x": 0, "y": 0},
-                1,
-                animation_controller.Curves.ease_out_cubic,
-            ),  # Back to (0, 0) in 1s
-            [animation_controller.Animation(btn, {"width": 50}, 2.5), 0],
-        ]
-        anim_group = animation_controller.AnimationGroup(btn, keyframes, steps=60)
-        anim_group.start()
-
-    btn2 = Button(
-        window,
-        text="animate",
-        width=100,
-        height=50,
-        command=animate_btn,
-    )
-    btn2.place(100, 0)
-
-    anim2 = animation_controller.AnimationGroup(
-        btn2,
-        [
-            [animation_controller.Animation(btn2, {"width": 50}, 1), 0],
-            [animation_controller.Animation(btn2, {"height": 100}, 1), 0],
-        ],
-        steps=60,
-        looping=True,
-    )
-    anim2.start()
-    Entry(window, width=100, height=50, text="hello").place(0, 100)
-
-    widget = Button(
-        window,
-        text="hello",
-        width=100,
-        height=100,
-        fill="#FF0000",
-    ).place(
-        200, 200
-    )  # Red
-    anim = animation_controller.Animation(
-        widget, {"fill": "#00FF0000"}, duration=1.0, looping=True
-    )  # Animate to green
-    anim.start()
-
-    container = Container(window, width=200, height=50, fill="#FF0000")
-    container.place(20, 10)
-    print(container.maps)
-
-    button5 = Button(container, text="hello", width=100, height=100, fill="#FF0000")
-    button5.place(0, 0)
-
-    window.taskbar_manager.SetProgress(20)
-    window.taskbar_manager.SetThumbnailNotification("info")
-    # Add buttons to taskbar
-    window.taskbar_manager.AddMediaControlButtons({})
-
-    # Update play/pause state
-    window.taskbar_manager.UpdatePlayPauseButton(True)  # Show pause icon
-
-    # Disable next button if at end of playlist
-    window.taskbar_manager.SetButtonEnabled(
-        taskbar_manager.WindowsConstants.THUMB_BUTTON_FORWARD, False
-    )"""
-
 
 if __name__ == "__main__":
     __main__()

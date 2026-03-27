@@ -103,17 +103,7 @@ def normalize_angle(angle):
 def get_rect_points(_object):
     """Gets 4 points of a rectangle, given the object's position and orientation"""
 
-    # Add up positions for relative offsets in parent tree
-    x = _object.x
-    y = _object.y
-    obj = _object
-    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
-        # Safety check: only add position if root has x and y attributes
-        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
-            x += obj.root.x
-            y += obj.root.y
-        obj = obj.root
-
+    x, y = rel_position_to_abs(_object, _object.x, _object.y)
     a = (x, y)
 
     # Normalize angle to be within [0, 360)

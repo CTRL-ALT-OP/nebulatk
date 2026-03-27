@@ -165,20 +165,10 @@ class _widget_properties:
         self._size[0] = width
 
         if self.initialized:
-            if hasattr(self, "_resize_widget_images"):
-                self._resize_widget_images()
-            if self.bounds_type == "non-standard" and self._images.get("image") is not None:
-                self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
-                    self._images["image"].image
-                )
-            if (
-                self.resize
-                and hasattr(self.master, "_ensure_resize_baseline")
-                and not getattr(self.master, "_resize_reflow_active", False)
-            ):
-                self.master._ensure_resize_baseline(self, force=True)
             if self.master.updates_all:
                 self._configure_size(self._size)
+            else:
+                self._apply_size_side_effects()
 
     @property
     def height(self):
@@ -189,20 +179,10 @@ class _widget_properties:
         self._size[1] = height
 
         if self.initialized:
-            if hasattr(self, "_resize_widget_images"):
-                self._resize_widget_images()
-            if self.bounds_type == "non-standard" and self._images.get("image") is not None:
-                self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
-                    self._images["image"].image
-                )
-            if (
-                self.resize
-                and hasattr(self.master, "_ensure_resize_baseline")
-                and not getattr(self.master, "_resize_reflow_active", False)
-            ):
-                self.master._ensure_resize_baseline(self, force=True)
             if self.master.updates_all:
                 self._configure_size(self._size)
+            else:
+                self._apply_size_side_effects()
 
     @property
     def x(self):
@@ -943,8 +923,7 @@ class _widget(_widget_properties, Component):
             if image is not None and hasattr(image, "resize"):
                 image.resize(inner_width, inner_height)
 
-    def _configure_size(self, size):
-        self._size = [int(size[0]), int(size[1])]
+    def _apply_size_side_effects(self):
         self._resize_widget_images()
         if self.bounds_type == "non-standard" and self._images.get("image") is not None:
             self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
@@ -956,6 +935,10 @@ class _widget(_widget_properties, Component):
             and not getattr(self.master, "_resize_reflow_active", False)
         ):
             self.master._ensure_resize_baseline(self, force=True)
+
+    def _configure_size(self, size):
+        self._size = [int(size[0]), int(size[1])]
+        self._apply_size_side_effects()
         self.update()
 
     def _configure_text(self, text):

@@ -21,6 +21,39 @@ except Exception:
     GL = None
 
 
+_GLFW_SPECIAL_KEY_NAMES = {
+    "KEY_BACKSPACE": "BackSpace",
+    "KEY_DELETE": "Delete",
+    "KEY_LEFT": "Left",
+    "KEY_RIGHT": "Right",
+    "KEY_HOME": "Home",
+    "KEY_END": "End",
+    "KEY_LEFT_SHIFT": "Shift_L",
+    "KEY_RIGHT_SHIFT": "Shift_R",
+    "KEY_LEFT_CONTROL": "Control_L",
+    "KEY_RIGHT_CONTROL": "Control_R",
+    "KEY_LEFT_SUPER": "Meta_L",
+    "KEY_RIGHT_SUPER": "Meta_R",
+}
+
+
+def _glfw_key_name(key):
+    if glfw is None:
+        return ""
+
+    special = {
+        getattr(glfw, glfw_name): key_name
+        for glfw_name, key_name in _GLFW_SPECIAL_KEY_NAMES.items()
+        if hasattr(glfw, glfw_name)
+    }
+    if key in special:
+        return special[key]
+    if hasattr(glfw, "KEY_A") and hasattr(glfw, "KEY_Z") and glfw.KEY_A <= key <= glfw.KEY_Z:
+        return chr(ord("a") + (key - glfw.KEY_A))
+    name = glfw.get_key_name(key, 0)
+    return name if name is not None else ""
+
+
 def _to_rgba(color):
     if color is None:
         return None
@@ -437,26 +470,7 @@ class NativeGLWindow:
         self._clipboard_fallback = self._clipboard_fallback
 
     def _key_name(self, key):
-        special = {
-            glfw.KEY_BACKSPACE: "BackSpace",
-            glfw.KEY_DELETE: "Delete",
-            glfw.KEY_LEFT: "Left",
-            glfw.KEY_RIGHT: "Right",
-            glfw.KEY_HOME: "Home",
-            glfw.KEY_END: "End",
-            glfw.KEY_LEFT_SHIFT: "Shift_L",
-            glfw.KEY_RIGHT_SHIFT: "Shift_R",
-            glfw.KEY_LEFT_CONTROL: "Control_L",
-            glfw.KEY_RIGHT_CONTROL: "Control_R",
-            glfw.KEY_LEFT_SUPER: "Meta_L",
-            glfw.KEY_RIGHT_SUPER: "Meta_R",
-        }
-        if key in special:
-            return special[key]
-        if glfw.KEY_A <= key <= glfw.KEY_Z:
-            return chr(ord("a") + (key - glfw.KEY_A))
-        name = glfw.get_key_name(key, 0)
-        return name if name is not None else ""
+        return _glfw_key_name(key)
 
     def _on_key(self, _window, key, scancode, action, _mods):
         keysym = self._key_name(key)
@@ -649,26 +663,7 @@ class NativeGLWindow:
 
 
 def _native_window_process_key_name(key):
-    special = {
-        glfw.KEY_BACKSPACE: "BackSpace",
-        glfw.KEY_DELETE: "Delete",
-        glfw.KEY_LEFT: "Left",
-        glfw.KEY_RIGHT: "Right",
-        glfw.KEY_HOME: "Home",
-        glfw.KEY_END: "End",
-        glfw.KEY_LEFT_SHIFT: "Shift_L",
-        glfw.KEY_RIGHT_SHIFT: "Shift_R",
-        glfw.KEY_LEFT_CONTROL: "Control_L",
-        glfw.KEY_RIGHT_CONTROL: "Control_R",
-        glfw.KEY_LEFT_SUPER: "Meta_L",
-        glfw.KEY_RIGHT_SUPER: "Meta_R",
-    }
-    if key in special:
-        return special[key]
-    if glfw.KEY_A <= key <= glfw.KEY_Z:
-        return chr(ord("a") + (key - glfw.KEY_A))
-    name = glfw.get_key_name(key, 0)
-    return name if name is not None else ""
+    return _glfw_key_name(key)
 
 
 def _native_window_process_main(

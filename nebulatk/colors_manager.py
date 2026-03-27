@@ -26,6 +26,8 @@ class Color(str):
         """
         # Convert color to rgb
         color = self.rgba
+        if color is None:
+            return Color(None)
 
         # If RGBA
         if len(color) > 3:
@@ -65,6 +67,8 @@ class Color(str):
         """
         # Convert color to rgb
         color = self.rgba
+        if color is None:
+            return Color(None)
 
         # If RGBA
         if len(color) > 3:
@@ -96,9 +100,13 @@ class Color(str):
         return str(self.color)
 
     def __eq__(self, other):
+        if isinstance(other, Color):
+            return self.color == other.color
         return self.color == other
 
     def startswith(self, prefix) -> bool:
+        if self.color is None:
+            return False
         return self.color.startswith(prefix)
 
 

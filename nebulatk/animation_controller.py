@@ -479,7 +479,8 @@ class AnimationGroup(threading.Thread):
             self.running = False
             for anim in self.animations:
                 anim[0].stop()
-        self.widget.master.active_animations.remove(self)
+        if self in self.widget.master.active_animations:
+            self.widget.master.active_animations.remove(self)
 
     def run(self) -> None:
         """Run all animations in sequence."""
