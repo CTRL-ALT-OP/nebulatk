@@ -15,7 +15,6 @@ class Image:
     def __init__(self, image, _object=None):
         self.image = None
         self._source_image = None
-        self.tk_images = {}
         self.bounds = []
 
         if type(image) is Image:
@@ -30,10 +29,6 @@ class Image:
                         _object.height - (_object.border_width * 2),
                     )
 
-                if _needs_tk_conversion(_object):
-                    # Convert image for tkinter only when a tkinter canvas backend is active
-                    self.tk_images[_object.master] = convert_image(_object, self.image)
-
         elif type(image) is str:
             # Open image
             self.image = pil.open(image)
@@ -46,20 +41,11 @@ class Image:
                         _object.height - (_object.border_width * 2),
                     )
 
-                if _needs_tk_conversion(_object):
-                    # Convert image for tkinter only when a tkinter canvas backend is active
-                    self.tk_images[_object.master] = convert_image(_object, self.image)
-
         elif image is not None:
             self.image = image
             self._source_image = self.image.copy() if self.image is not None else None
 
-            if _object is not None:
-                if _needs_tk_conversion(_object):
-                    self.tk_images[_object.master] = convert_image(_object, self.image)
-
     def resize(self, width, height):
-        self.tk_images = {}
         if width != 0 and height != 0 and self._source_image is not None:
             self.image = self._source_image.resize(
                 (
@@ -71,7 +57,6 @@ class Image:
         return self
 
     def flip(self, direction="horizontal"):
-        self.tk_images = {}
         if direction == "horizontal":
             self.image = self.image.transpose(pil.FLIP_LEFT_RIGHT)
         elif direction == "vertical":
@@ -80,14 +65,12 @@ class Image:
         return self
 
     def rotate(self, angle):
-        self.tk_images = {}
         pil_img = self.image.rotate(angle, expand=True)
         self.image = pil_img
         self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def recolor(self, color):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
 
@@ -103,7 +86,6 @@ class Image:
         return self._update_pil_data(pil_img, new_data)
 
     def set_transparency(self, transparency):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -116,7 +98,6 @@ class Image:
         return self._update_pil_data(pil_img, new_data)
 
     def increment_transparency(self, transparency):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -147,7 +128,6 @@ class Image:
             "log": lambda x: transparency / math.log(255 + 1) * math.log(x + 1),
         }
 
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -167,28 +147,12 @@ class Image:
         return self
 
     def tk_image(self, _object):
-        if not _needs_tk_conversion(_object):
-            return self.image
-        if _object.master not in self.tk_images:
-            self.tk_images[_object.master] = convert_image(_object, self.image)
-        return self.tk_images[_object.master]
+        return self.image
 
 
 def convert_image(_object, image):
-    # OpenGL pipeline consumes PIL images directly.
+    # Backward-compatible shim: rendering always consumes PIL images directly.
     return image
-
-
-def _needs_tk_conversion(_object):
-    master = getattr(_object, "master", None)
-    if master is None:
-        return False
-    if hasattr(master, "_window"):
-        window = master._window
-    else:
-        window = master
-    render_mode = getattr(window, "render_mode", "canvas")
-    return render_mode != "image_gl"
 
 
 def load_image(_object, image, return_both=False):
@@ -205,14 +169,14 @@ def load_image(_object, image, return_both=False):
         TkImage: Tkinter-compatible image
         PilImage: Pil image
     """
-    image_converted = None
+    loaded_image = None
     if image is not None:
         # Open image
-        image = pil.open(image)
+        loaded_image = pil.open(image)
 
         # Resize image if size isn't specified
         if _object.width != 0 and _object.height != 0:
-            image = image.resize(
+            loaded_image = loaded_image.resize(
                 (
                     _object.width - (_object.border_width * 2),
                     _object.height - (_object.border_width * 2),
@@ -220,12 +184,8 @@ def load_image(_object, image, return_both=False):
                 pil.NEAREST,
             )
 
-        # Convert image for tkinter only when required by backend
-        if _needs_tk_conversion(_object):
-            image_converted = convert_image(_object, image)
-
-    # Return both PhotoImage and PilImage objects if requested
-    return (image_converted, image) if return_both else image_converted
+    # Rendering always uses PIL images directly.
+    return (loaded_image, loaded_image) if return_both else loaded_image
 
 
 def load_image_generic(window, image, return_both=False):
@@ -241,17 +201,13 @@ def load_image_generic(window, image, return_both=False):
         TkImage: Tkinter-compatible image
         PilImage: Pil image
     """
-    image_converted = None
+    loaded_image = None
     if image is not None:
         # Open image
-        image = pil.open(image)
+        loaded_image = pil.open(image)
 
-        # Convert image for tkinter only when required by backend
-        if _needs_tk_conversion(window):
-            image_converted = convert_image(window, image)
-
-    # Return both PhotoImage and PilImage objects if requested
-    return (image_converted, image) if return_both else image_converted
+    # Rendering always uses PIL images directly.
+    return (loaded_image, loaded_image) if return_both else loaded_image
 
 
 def create_image(fill, width, height, border, border_width, master):
