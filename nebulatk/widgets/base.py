@@ -164,8 +164,15 @@ class _widget_properties:
     def width(self, width):
         self._size[0] = width
 
-        if self.initialized and self.master.updates_all:
-            self._configure_size(self._size)
+        if self.initialized:
+            if hasattr(self, "_resize_widget_images"):
+                self._resize_widget_images()
+            if self.bounds_type == "non-standard" and self._images.get("image") is not None:
+                self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
+                    self._images["image"].image
+                )
+            if self.master.updates_all:
+                self._configure_size(self._size)
 
     @property
     def height(self):
@@ -175,8 +182,15 @@ class _widget_properties:
     def height(self, height):
         self._size[1] = height
 
-        if self.initialized and self.master.updates_all:
-            self._configure_size(self._size)
+        if self.initialized:
+            if hasattr(self, "_resize_widget_images"):
+                self._resize_widget_images()
+            if self.bounds_type == "non-standard" and self._images.get("image") is not None:
+                self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
+                    self._images["image"].image
+                )
+            if self.master.updates_all:
+                self._configure_size(self._size)
 
     @property
     def x(self):
@@ -883,7 +897,23 @@ class _widget(_widget_properties, Component):
                 self.master.end_render_batch()
         self._request_redraw()
 
+    def _resize_widget_images(self):
+        if not hasattr(self, "_images"):
+            return
+        inner_width = max(0, int(self.width) - (int(self.border_width) * 2))
+        inner_height = max(0, int(self.height) - (int(self.border_width) * 2))
+        for image_key in ("image", "active_image", "hover_image", "active_hover_image"):
+            image = self._images.get(image_key)
+            if image is not None and hasattr(image, "resize"):
+                image.resize(inner_width, inner_height)
+
     def _configure_size(self, size):
+        self._size = [int(size[0]), int(size[1])]
+        self._resize_widget_images()
+        if self.bounds_type == "non-standard" and self._images.get("image") is not None:
+            self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
+                self._images["image"].image
+            )
         self.update()
 
     def _configure_text(self, text):

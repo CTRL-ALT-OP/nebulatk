@@ -14,11 +14,13 @@ except ImportError:
 class Image:
     def __init__(self, image, _object=None):
         self.image = None
+        self._source_image = None
         self.tk_images = {}
         self.bounds = []
 
         if type(image) is Image:
             self.image = image.image
+            self._source_image = self.image.copy() if self.image is not None else None
 
             if _object is not None:
                 # Resize image if size isn't specified
@@ -35,6 +37,7 @@ class Image:
         elif type(image) is str:
             # Open image
             self.image = pil.open(image)
+            self._source_image = self.image.copy() if self.image is not None else None
             if _object is not None:
                 # Resize image if size isn't specified
                 if _object.width != 0 and _object.height != 0:
@@ -49,6 +52,7 @@ class Image:
 
         elif image is not None:
             self.image = image
+            self._source_image = self.image.copy() if self.image is not None else None
 
             if _object is not None:
                 if _needs_tk_conversion(_object):
@@ -56,8 +60,8 @@ class Image:
 
     def resize(self, width, height):
         self.tk_images = {}
-        if width != 0 and height != 0:
-            self.image = self.image.resize(
+        if width != 0 and height != 0 and self._source_image is not None:
+            self.image = self._source_image.resize(
                 (
                     width,
                     height,
@@ -72,12 +76,14 @@ class Image:
             self.image = self.image.transpose(pil.FLIP_LEFT_RIGHT)
         elif direction == "vertical":
             self.image = self.image.transpose(pil.FLIP_TOP_BOTTOM)
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def rotate(self, angle):
         self.tk_images = {}
         pil_img = self.image.rotate(angle, expand=True)
         self.image = pil_img
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def recolor(self, color):
@@ -157,6 +163,7 @@ class Image:
     def _update_pil_data(self, pil_img, new_data):
         pil_img.putdata(new_data)
         self.image = pil_img
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def tk_image(self, _object):
