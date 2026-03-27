@@ -385,6 +385,10 @@ class NativeGLWindow:
             callback = self._protocol_handlers.get(message.get("name"))
             if callback is not None:
                 callback()
+            # Acknowledge close-protocol delivery so the native process can
+            # distinguish "owner handled this" from "owner thread disappeared".
+            if message.get("name") == "WM_DELETE_WINDOW":
+                self._send_native_command({"op": "close_request_handled"})
             return
         if (
             msg_type == "closed"
@@ -705,6 +709,7 @@ def _native_window_process_main(
         clipboard_fallback = ""
         mouse_state = {"x": 0, "y": 0}
         running = True
+        close_request_deadline = None
 
         def send_event(name, x=0, y=0, keysym="", char=""):
             event_queue.put(
@@ -720,6 +725,7 @@ def _native_window_process_main(
             )
 
         def on_close_requested(_window):
+            nonlocal close_request_deadline
             event_queue.put(
                 {
                     "type": "protocol",
@@ -727,6 +733,10 @@ def _native_window_process_main(
                     "name": "WM_DELETE_WINDOW",
                 }
             )
+            # Keep the window open while the owner thread handles WM_DELETE_WINDOW.
+            # If the owner is gone and never acknowledges, close anyway shortly
+            # after to avoid a permanently stuck window.
+            close_request_deadline = time.time() + 1.0
             glfw.set_window_should_close(_window, False)
 
         def on_cursor_pos(_window, x, y):
@@ -780,6 +790,8 @@ def _native_window_process_main(
                 if op == "quit":
                     running = False
                     glfw.set_window_should_close(window, True)
+                elif op == "close_request_handled":
+                    close_request_deadline = None
                 elif op == "wake":
                     pass
                 elif op == "geometry":
@@ -849,6 +861,9 @@ def _native_window_process_main(
                 glfw.swap_buffers(window)
             except Exception:
                 traceback.print_exc()
+            if close_request_deadline is not None and time.time() >= close_request_deadline:
+                running = False
+                glfw.set_window_should_close(window, True)
             time.sleep(0.001)
     finally:
         try:
