@@ -1,16 +1,15 @@
-# Import tkinter and filedialog
 import sys
 import threading
-import tkinter as tk
+import queue as std_queue
+import logging
 
 # Import python standard packages
 from time import sleep
-from tkinter import filedialog as tkfile_dialog
 
 
 # Importing from another file works differently than if running this file directly for some reason.
 # Import all required modules from nebulatk
-try:
+if __package__:
     from . import (
         bounds_manager,
         fonts_manager,
@@ -20,6 +19,8 @@ try:
         defaults,
         animation_controller,
         taskbar_manager,
+        rendering,
+        file_manager,
     )
 
     # Import Component and _widget classes from widgets.base
@@ -28,7 +29,7 @@ try:
     # Import widget classes from widgets module
     from .widgets import Button, Label, Entry, Frame, Slider, Container
 
-except ImportError:
+else:
     import bounds_manager
     import fonts_manager
     import colors_manager
@@ -37,6 +38,8 @@ except ImportError:
     import defaults
     import animation_controller
     import taskbar_manager
+    import rendering
+    import file_manager
 
     # Import Component and _widget classes from widgets.base
     from widgets.base import Component, _widget, _widget_properties
@@ -45,37 +48,12 @@ except ImportError:
     from widgets import Button, Label, Entry, Frame, Slider, Container
 
 
-# Our implementation of tkinter's file_dialog.
-# This mostly just exists so that the user doesn't have to import nebulatk and tkinter
-def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"))):
-    """Identical to tkinter.FileDialog
-
-    Args:
-        window (nebulatk.Window): Root window
-        initialdir (str, optional): Initial directory to open to. Defaults to None.
-        mode (str, optional): File open mode. Defaults to "r".
-        filetypes (list, optional): List of filetypes. Format like:
-            [
-                ("Name","*.ext"),
-                ("Name", ("*.ext", "*.ext2"))
-            ]
-            Defaults to [("All files", "*")].
-
-    Returns:
-        file: Open file
-    """
-    window.leave_window(None)
-    file = tkfile_dialog.askopenfile(
-        initialdir=initialdir,
-        mode=mode,
-        filetypes=filetypes,
-    )
-    window.leave_window(None)
-    return file
+FileDialog = file_manager.FileDialog
+logger = logging.getLogger(__name__)
 
 
 # Internal window class to implement threading
-# NOTE: Threading and tcl do not combine well, so we have to do a lot of stuff ourselves and be careful that all modifications to the tcl windows are done in the same thread
+# NOTE: The window loop runs in its own thread.
 class _window_internal(threading.Thread, Component):
 
     def __init__(
@@ -88,6 +66,9 @@ class _window_internal(threading.Thread, Component):
         closing_command=None,
         resizable=(True, True),
         override=False,
+        render_mode="image_gl",
+        fps=60,
+        background_color="FFFFFF",
     ):
         # Initialize the thread
         super().__init__()
@@ -105,11 +86,15 @@ class _window_internal(threading.Thread, Component):
         self.root = None
         self.master = self
         self.canvas = None
+        self.display = None
+        self.renderer = None
         self.down = None
         self.active = None
         self.hovered = None
         self.resizable = resizable
         self.override = override
+        self.render_mode = render_mode
+        self.fps = fps
         self.updates_all = (
             False  # Whether updates to members update the widget automatically
         )
@@ -135,11 +120,27 @@ class _window_internal(threading.Thread, Component):
 
         # Initialize rest of variables
         self.running = True
+        self._startup_error = None
+        self._startup_event = threading.Event()
         self.closing_command = closing_command
 
         self.defaults = defaults.new()
 
         self._taskbar_manager = None
+        self._render_batch_depth = 0
+        self._window_thread_id = None
+        self._ui_queue = std_queue.Queue()
+        self._ui_queue_signal_scheduled = False
+        self._ui_queue_lock = threading.Lock()
+        self._ui_wait_timeout = 5.0
+        self._closed_event = threading.Event()
+        self._closing_command_called = False
+        self._closing_lock = threading.Lock()
+        self._redraw_needed = True
+        self._resize_reflow_active = False
+        self._resize_reference_window_size = (max(1, int(width)), max(1, int(height)))
+        self.background_color = self._normalize_background_color(background_color)
+        self.background = None
 
     @property
     def taskbar_manager(self):
@@ -153,7 +154,17 @@ class _window_internal(threading.Thread, Component):
 
     @taskbar_manager.setter
     def taskbar_manager(self, value):
-        return "Cannot set taskbar_manager"
+        raise AttributeError("taskbar_manager is read-only")
+
+    def _normalize_background_color(self, color):
+        if color is None:
+            return "#FFFFFF"
+        value = str(color).strip()
+        if value == "":
+            return "#FFFFFF"
+        if not value.startswith("#"):
+            value = f"#{value}"
+        return value
 
     # NOTE: EVENT HANDLERS
 
@@ -163,23 +174,7 @@ class _window_internal(threading.Thread, Component):
         x = int(event.x)
         y = int(event.y)
 
-        active_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
-        """
-        # Find the object that was clicked
-        # Check if there are any objects initialized at that position
-        if y in self.bounds:
-            # Iterate over all objects at that y coordinate
-            for i in self.bounds[y]:
-                # Check if the mouse was within that object's boundary
-                if x <= i[2] and x >= i[1]:
-                    # Object found
-                    # Set active_new and break
-                    active_new = i[0]
-                    break
-        """
+        active_new = self._find_deepest_hit(self.children, x, y)
         # If the new object is actually new, update the current active widget
         # self.active is used for things like detecting what widget to send keypresses to
         if active_new is not self.active:
@@ -216,31 +211,10 @@ class _window_internal(threading.Thread, Component):
         if self.down is not None:
             self.down.dragging(x, y)
 
-        hovered_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
+        hovered_new = self._find_deepest_hit(self.children, x, y)
 
         if hovered_new is not self.hovered and hovered_new is not None:
             hovered_new.hovered()
-        """
-        # Find the object that was hovered over
-        # Check if there are any objects initialized at that position
-        if y in self.bounds:
-            # Iterate over all objects at that y coordinate
-            for i in self.bounds[y]:
-                # Check if the mouse was within that object's boundary
-                if x <= i[2] and x >= i[1]:
-                    # Object found
-                    # If this object wasn't already being hovered over, trigger new object's hovered event
-                    if i[0] is not self.hovered:
-                        print("hovered")
-                        i[0].hovered()
-
-                    # Set hovered_new and break
-                    hovered_new = i[0]
-                    break
-        """
         # If the object wasn't already being hovered over, check that there was something being hovered over previously and trigger the old object's hover_end event
         if hovered_new is not self.hovered:
             if self.hovered is not None:
@@ -276,146 +250,235 @@ class _window_internal(threading.Thread, Component):
         if event.keysym in self.active_keys:
             self.active_keys.remove(event.keysym)
 
+    def _find_deepest_hit(self, children, x, y):
+        for child in children:
+            if not bounds_manager.check_hit(child, x, y):
+                continue
+            nested_children = getattr(child, "children", [])
+            if nested_children:
+                nested = self._find_deepest_hit(nested_children, x, y)
+                if nested is not None:
+                    return nested
+            if getattr(child, "can_focus", True):
+                return child
+        return None
+
     # NOTE: CREATION HANDLERS
     # These are necessary so that threading works properly with tcl
 
-    # Wrapper for canvas.create_image method
-    def create_image(self, x, y, image, state="normal"):
-        img = self.canvas.create_image(
-            x,
-            y,
-            image=image.tk_image(self),
-            anchor="nw",
-            state=state,
-        )
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(img)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return img, image
+    def _is_window_thread(self):
+        return threading.get_ident() == self._window_thread_id
 
-    # Wrapper for canvas.create_rectangle method
-    def create_rectangle(
-        self, x, y, widt, height=0, fill=0, border_width=0, outline=None, state="normal"
-    ):
-        if x == widt or y == height:
-            return None, None
-        # To support transparency with RGBA, we need to check whether the rectangle includes transparency
-        if fill is not None and fill[7:] != "ff":
-            bg_image = image_manager.create_image(
-                fill, int(widt - x), int(height - y), outline, border_width, self
-            )
-            id, image = self.create_image(x, y, bg_image, state=state)
-            return id, image
+    def _execute_in_window_thread(self, callback, wait=True):
+        if self._is_window_thread() or self.root is None:
+            return callback()
+        if not self.is_alive():
+            if not wait:
+                return callback()
+            raise RuntimeError("Window thread is not running.")
 
-            # Otherwise we can continue with creating the rectangle
+        done = threading.Event()
+        result = {"value": None, "error": None}
+        self._ui_queue.put((callback, done, result))
+        self._signal_ui_queue()
 
-        rect = self.canvas.create_rectangle(
-            x + border_width / 2,
-            y + border_width / 2,
-            widt - border_width / 2,
-            height - border_width / 2,
-            fill=fill[:7],
-            width=border_width,
-            outline=outline[:7],
-            state=state,
-        )
+        if not wait:
+            return None
+        completed = done.wait(timeout=self._ui_wait_timeout)
+        if not completed:
+            if not self.is_alive():
+                raise RuntimeError("Window thread exited before processing queued work.")
+            raise TimeoutError("Timed out waiting for window thread response.")
+        if result["error"] is not None:
+            raise result["error"]
+        return result["value"]
 
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(rect)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return (rect, None)
+    def _invoke_closing_command_once(self):
+        if self.closing_command is None:
+            return
+        with self._closing_lock:
+            if self._closing_command_called:
+                return
+            self._closing_command_called = True
+        self.closing_command()
 
-    # Wrapper for canvas.create_text method
-    def create_text(
-        self, x, y, text, font, fill="black", anchor="center", state="normal", angle=0
-    ):
+    def _signal_ui_queue(self):
+        if self.root is None:
+            return
+        with self._ui_queue_lock:
+            if self._ui_queue_signal_scheduled:
+                return
+            self._ui_queue_signal_scheduled = True
+        self.root.after(0, self._drain_ui_queue)
 
-        text_id = self.canvas.create_text(
-            x,
-            y,
-            text=text,
-            font=font,
-            fill=fill,
-            anchor=anchor,
-            state=state,
-            angle=angle,
-        )
+    def _drain_ui_queue(self):
+        while True:
+            try:
+                callback, done, result = self._ui_queue.get_nowait()
+            except std_queue.Empty:
+                break
+            try:
+                result["value"] = callback()
+            except Exception as exc:
+                result["error"] = exc
+            finally:
+                done.set()
+        with self._ui_queue_lock:
+            self._ui_queue_signal_scheduled = False
+        if not self._ui_queue.empty() and self.root is not None:
+            self._signal_ui_queue()
 
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                child_canvas.replicate_object(text_id)
-                # Ensure background items stay behind container widgets
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
-        return (text_id, None)
+    def _mark_redraw_needed(self):
+        self._redraw_needed = True
+        if self.renderer is not None and hasattr(self.renderer, "request_redraw"):
+            self.renderer.request_redraw()
 
-    # Wrapper for canvas.move method
-    def move(self, _object, x, y):
-        if _object is not None:
-            self.canvas.move(_object, x, y)
-            for child_canvas in self.children:
+    def request_redraw(self):
+        self._execute_in_window_thread(self._mark_redraw_needed, wait=False)
+
+    def _iter_widgets(self, children=None):
+        if children is None:
+            children = self.children
+        for child in children:
+            yield child
+            nested_children = getattr(child, "children", [])
+            if nested_children:
+                yield from self._iter_widgets(nested_children)
+
+    def debug_font_resolution(self, widget=None, print_report=True):
+        """Inspect runtime font resolution used by the renderer."""
+        widgets = [widget] if widget is not None else list(self._iter_widgets())
+        reports = []
+
+        for current in widgets:
+            text = getattr(current, "text", "")
+            font_spec = getattr(current, "font", None)
+            if text in ("", None) or font_spec is None:
+                continue
+
+            if self.renderer is not None and hasattr(
+                self.renderer, "resolve_widget_font_debug"
+            ):
+                info = self.renderer.resolve_widget_font_debug(current)
+            else:
+                info = fonts_manager.get_font_debug_info(font_spec)
+
+            if info is None:
+                continue
+
+            info = dict(info)
+            info["widget_type"] = type(current).__name__
+            reports.append(info)
+
+        if print_report:
+            for item in reports:
+                print(
+                    "[font-debug]"
+                    f" widget={item['widget_type']}"
+                    f" family={item['requested_family']}"
+                    f" style={item['requested_style']}"
+                    f" size={item['requested_size']}"
+                    f" selected={item['selected_candidate']}"
+                    f" loaded_path={item['loaded_font_path']}"
+                    f" default_fallback={item['used_default_font']}"
+                )
+
+        return reports
+
+    def _ensure_resize_baseline(self, widget, force=False):
+        if not getattr(widget, "resize", False):
+            return
+        if force or not hasattr(widget, "_resize_reference"):
+            widget._resize_reference = {
+                "window_size": (max(1, int(self.width)), max(1, int(self.height))),
+                "x": int(getattr(widget, "x", 0) or 0),
+                "y": int(getattr(widget, "y", 0) or 0),
+                "width": int(getattr(widget, "width", 0) or 0),
+                "height": int(getattr(widget, "height", 0) or 0),
+            }
+
+    def _configure_surface_size(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        self.canvas_width = width
+        self.canvas_height = height
+        if self.renderer is not None:
+            self.renderer.width = width
+            self.renderer.height = height
+            if hasattr(self.renderer, "request_redraw"):
+                self.renderer.request_redraw()
+        if self.display is not None and hasattr(self.display, "configure"):
+            self.display.configure(width=width, height=height)
+
+    def _apply_resizable_widgets(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        if self._resize_reflow_active:
+            return
+        self._resize_reflow_active = True
+        if hasattr(self, "begin_render_batch"):
+            self.begin_render_batch()
+        try:
+            for widget in self._iter_widgets():
+                if not getattr(widget, "resize", False):
+                    continue
+                self._ensure_resize_baseline(widget)
+                reference = getattr(widget, "_resize_reference", None)
+                if reference is None:
+                    continue
+
+                ref_window_width, ref_window_height = reference["window_size"]
+                scale_x = width / max(1, int(ref_window_width))
+                scale_y = height / max(1, int(ref_window_height))
+
+                widget._position = [
+                    int(round(reference["x"] * scale_x)),
+                    int(round(reference["y"] * scale_y)),
+                ]
+                widget._size = [
+                    max(0, int(round(reference["width"] * scale_x))),
+                    max(0, int(round(reference["height"] * scale_y))),
+                ]
+                if hasattr(widget, "_resize_widget_images"):
+                    widget._resize_widget_images()
                 if (
-                    type(child_canvas).__name__ == "Container"
-                    and child_canvas.initialized
+                    getattr(widget, "bounds_type", None) == "non-standard"
+                    and hasattr(widget, "_images")
+                    and widget._images.get("image") is not None
                 ):
-                    if _object in child_canvas.maps:
-                        child_id = child_canvas.maps[_object]
-                        child_canvas.canvas.move(child_id, x, y)
-                    else:
-                        # Only try to replicate if the object exists and is valid
-                        try:
-                            if _object in self.canvas.find_all():
-                                child_canvas.replicate_object(_object)
-                        except (tk.TclError, AttributeError):
-                            # Object is invalid or doesn't exist, skip replication
-                            pass
+                    widget.bounds = (
+                        bounds_manager.generate_bounds_for_nonstandard_image(
+                            widget._images["image"].image
+                        )
+                    )
+                widget._update_children()
+        finally:
+            if hasattr(self, "end_render_batch"):
+                self.end_render_batch()
+            self._resize_reflow_active = False
 
-                        child_canvas.canvas.tag_lower("background_item")
-                        if child_canvas.canvas.find_withtag("fg_item"):
-                            child_canvas.canvas.tag_raise("fg_item")
+    def _sync_resize_state(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        if width == self.width and height == self.height:
+            return
+        self._size = [width, height]
+        self._configure_surface_size(width, height)
+        self._apply_resizable_widgets(width, height)
+        self._mark_redraw_needed()
 
-    def object_place(self, _object, x, y):
-        if _object is not None:
-            coords = self.canvas.coords(_object)
-            self.move(_object, x - coords[0], y - coords[1])
-
-    # Wrapper for canvas.delete method
-    def delete(self, _object):
-        self.canvas.delete(_object)
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                if _object in child_canvas.maps:
-                    child_id = child_canvas.maps[_object]
-                    child_canvas.canvas.delete(child_id)
-
-    # Wrapper for canvas.change_state method
-    def change_state(self, _object, state):
-        self.canvas.itemconfigure(_object, state=state)
-        for child_canvas in self.children:
-            if type(child_canvas).__name__ == "Container" and child_canvas.initialized:
-                if _object in child_canvas.maps:
-                    child_id = child_canvas.maps[_object]
-                    child_canvas.canvas.itemconfigure(child_id, state=state)
-                else:
-                    # Only try to replicate if the object exists and is valid
-                    try:
-                        if _object in self.canvas.find_all():
-                            child_canvas.replicate_object(_object)
-                    except (tk.TclError, AttributeError):
-                        # Object is invalid or doesn't exist, skip replication
-                        pass
-                child_canvas.canvas.tag_lower("background_item")
-                if child_canvas.canvas.find_withtag("fg_item"):
-                    child_canvas.canvas.tag_raise("fg_item")
+    def _sync_window_size_from_native(self):
+        if self.root is None:
+            return
+        if not hasattr(self.root, "winfo_width") or not hasattr(
+            self.root, "winfo_height"
+        ):
+            return
+        width = int(self.root.winfo_width() or 0)
+        height = int(self.root.winfo_height() or 0)
+        if width <= 0 or height <= 0:
+            return
+        self._sync_resize_state(width, height)
 
     # NOTE: Other methods
 
@@ -428,13 +491,11 @@ class _window_internal(threading.Thread, Component):
         # stop any running animations
         self.close_animations()
 
-        self.root.after(200, self.root.quit)
+        if self.root is not None:
+            self.root.after(200, self.root.quit)
 
         # wait up to a second for the thread to finish
-        self.join(timeout=0.1)
-
-        if self.closing_command:
-            self.closing_command()
+        self.join(timeout=1.0)
 
     def destroy(self):
         self.close()
@@ -444,70 +505,84 @@ class _window_internal(threading.Thread, Component):
             anim.stop()
             if anim.thread is not None:
                 while anim.thread.is_alive():
-                    self.root.update()
+                    if self.root is not None:
+                        self.root.update()
                     sleep(0.01)
                 anim.thread.join(timeout=1)
 
     # Add in window.place() to simplify tcl's root.geometry method
     def place(self, x=0, y=0):
-        self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        self._execute_in_window_thread(
+            lambda: self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        )
         return self
 
     # Wrapper for root.bind() method, in future, add global keypress handling
     def bind(self, key, command):
-        self.root.bind(key, command)
+        self._execute_in_window_thread(lambda: self.root.bind(key, command))
 
     # Main method
     def run(self):
-        # Create window
-        self.root = tk.Tk()
-        self.canvas = tk.Canvas(
-            self.root,
-            width=self.canvas_width,
-            height=self.canvas_height,
-            borderwidth=0,
-            highlightthickness=0,
-        )
-        self.canvas.pack()
+        try:
+            self._window_thread_id = threading.get_ident()
+            # Create window
+            self.root = rendering.NativeGLWindow(
+                self.width,
+                self.height,
+                title=self.title,
+                resizable=self.resizable,
+                override=self.override,
+            )
+            self.renderer = rendering.PILImageRenderer(
+                self, self.canvas_width, self.canvas_height, fps=self.fps
+            )
+            self.display = rendering.OpenGLImageDisplay(
+                self.root, self.canvas_width, self.canvas_height
+            )
+            self.root.set_draw_callback(self.display.draw)
+            self.canvas = self.display.canvas
 
-        # Initialize window
-        self.root.geometry(f"{self.width}x{self.height}")
+            # Initialize window
+            self.root.geometry(f"{self.width}x{self.height}")
 
-        self.root.title(self.title)
+            self.root.title(self.title)
 
-        self.root.resizable(self.resizable[0], self.resizable[1])
+            self.root.resizable(self.resizable[0], self.resizable[1])
 
-        self.root.overrideredirect(self.override)
+            self.root.overrideredirect(self.override)
 
-        def close():
+            def close():
+                self.running = False
+                self.close_animations()
+                try:
+                    self.root.quit()
+                except Exception:
+                    logger.exception("Failed to quit native root during close callback.")
+
+            # Bind events to our new event handlers
+            self.bind("<Button-1>", self.click)
+            self.bind("<ButtonRelease-1>", self.click_up)
+            self.bind("<Key>", self.typing)
+            self.bind("<KeyRelease>", self.typing_up)
+            self.root.protocol("WM_DELETE_WINDOW", close)
+            self.bind("<Motion>", self.hover)
+            self.bind("<Leave>", self.leave_window)
+
+            self.root.after(0, self._drain_ui_queue)
+            self._render_tick()
+            self._startup_event.set()
+            self.root.mainloop()
+        except Exception as exc:
+            self._startup_error = exc
             self.running = False
-            self.close_animations()
-            try:
-                self.root.quit()
-            except Exception as e:
-                print(f"exception{e}")
-            if self.closing_command is not None:
-                self.closing_command()
-
-        # Bind events to our new event handlers
-        self.bind("<Button-1>", self.click)
-        self.bind("<ButtonRelease-1>", self.click_up)
-        self.bind("<Key>", self.typing)
-        self.bind("<KeyRelease>", self.typing_up)
-        self.root.protocol("WM_DELETE_WINDOW", close)
-        self.bind("<Motion>", self.hover)
-        self.bind("<Leave>", self.leave_window)
-
-        self.root.mainloop()
+            self._startup_event.set()
+        finally:
+            self._startup_event.set()
+            self._closed_event.set()
+            self._invoke_closing_command_once()
 
         # schedule a periodic check of `self.running`,
-        # so that close() can break us out cleanly:
-        # print("exited")
-        # NOTE: The following code is an alternative, but broken, method of running mainloop
-        """while self.running:
-            self.root.update_idletasks()
-            self.root.update()
-            sleep(0.01)"""
+        # so that close() can break us out cleanly.
 
     # Add resize method to change window dimensions
     def resize(self, width=None, height=None):
@@ -520,22 +595,15 @@ class _window_internal(threading.Thread, Component):
         Returns:
             self: Returns self for method chaining
         """
-        if width is not None:
-            self._size[0] = int(width)
-        if height is not None:
-            self._size[1] = int(height)
+        target_width = self.width if width is None else int(width)
+        target_height = self.height if height is None else int(height)
 
-        # Update the window geometry
-        self.root.geometry(f"{self.width}x{self.height}")
+        def _apply_resize():
+            # Update the window geometry
+            self.root.geometry(f"{target_width}x{target_height}")
+            self._sync_resize_state(target_width, target_height)
 
-        # If canvas dimensions should match window, update those too
-        self.canvas_width = self.width
-        self.canvas.configure(width=self.width)
-        self.canvas_height = self.height
-        self.canvas.configure(height=self.height)
-
-        # Update all children to match new dimensions
-        self._update_children()
+        self._execute_in_window_thread(_apply_resize)
 
         return self
 
@@ -548,7 +616,7 @@ class _window_internal(threading.Thread, Component):
         """
         # Use deiconify to make window visible if it was withdrawn
         if self.root is not None:
-            self.root.deiconify()
+            self._execute_in_window_thread(self.root.deiconify)
             self.update()
 
         return self
@@ -562,12 +630,11 @@ class _window_internal(threading.Thread, Component):
         """
         # Use withdraw to hide window without destroying it
         if self.root is not None:
-            self.root.withdraw()
+            self._execute_in_window_thread(self.root.withdraw)
 
         return self
 
     # Add configure method similar to widget configure
-    # Also Wrapper for canvas.configure method
     def configure(self, _object=None, **kwargs):
         """Configure window properties.
 
@@ -580,9 +647,8 @@ class _window_internal(threading.Thread, Component):
         Returns:
             self: Returns self for method chaining
         """
-        if _object:
-            self.canvas.itemconfigure(_object, kwargs)
-            return self
+        if _object is not None:
+            raise TypeError("_object is not supported for Window.configure().")
 
         if "width" in kwargs or "height" in kwargs:
             self.resize(kwargs.get("width"), kwargs.get("height"))
@@ -590,20 +656,52 @@ class _window_internal(threading.Thread, Component):
         if "title" in kwargs:
             self.title = kwargs["title"]
             if self.root is not None:
-                self.root.title(self.title)
+                self._execute_in_window_thread(lambda: self.root.title(self.title))
 
         if "resizable" in kwargs:
             self.resizable = kwargs["resizable"]
             if type(self.resizable) is bool:
                 self.resizable = (self.resizable, self.resizable)
             if self.root is not None:
-                self.root.resizable(self.resizable[0], self.resizable[1])
+                self._execute_in_window_thread(
+                    lambda: self.root.resizable(self.resizable[0], self.resizable[1])
+                )
+
+        background_color = kwargs.get(
+            "background_color", kwargs.get("background-color")
+        )
+        if background_color is not None:
+            self.background_color = self._normalize_background_color(background_color)
+            if self.background is not None:
+                self.background.fill = self.background_color
+
+        self.request_redraw()
 
         return self
 
     def update(self):
-        self.root.update()
+        if self.root is not None:
+            self._execute_in_window_thread(self.root.update)
         return self
+
+    def _render_tick(self):
+        if self.renderer is None or self.root is None:
+            return
+        self._sync_window_size_from_native()
+        if self._render_batch_depth > 0:
+            self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
+            return
+        frame = self.renderer.render_if_due()
+        if frame is not None:
+            self.display.show_frame(frame)
+            self._redraw_needed = False
+        self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
+
+    def begin_render_batch(self):
+        self._render_batch_depth += 1
+
+    def end_render_batch(self):
+        self._render_batch_depth = max(0, self._render_batch_depth - 1)
 
 
 def Window(
@@ -615,6 +713,10 @@ def Window(
     closing_command=None,
     resizable=(True, True),
     override=False,
+    render_mode="image_gl",
+    fps=60,
+    background_color="FFFFFF",
+    **kwargs,
 ):
     """Window constructor
 
@@ -626,6 +728,7 @@ def Window(
         canvas_height (str, optional): Canvas height. Defaults to height.
         closing_command (function, optional): Command to execute on close. Defaults to sys.exit.
         resizable (iterable or boolean, optional): Controls whether the window is resizable on the X axis, then Y axis
+        background_color (str, optional): Window background color. Defaults to FFFFFF.
 
     Returns:
         _type_: _description_
@@ -634,6 +737,17 @@ def Window(
 
     if type(resizable) is bool:
         resizable = (resizable, resizable)
+
+    if "background-color" in kwargs:
+        background_color = kwargs.pop("background-color")
+    if kwargs:
+        raise TypeError(f"Unexpected Window arguments: {', '.join(kwargs.keys())}")
+
+    if render_mode != "image_gl":
+        raise ValueError(
+            "This branch only supports render_mode='image_gl'. "
+            "Use master for legacy tkinter canvas rendering."
+        )
 
     if title is None:
         title = "ntk"
@@ -647,14 +761,41 @@ def Window(
         closing_command,
         resizable,
         override,
+        render_mode,
+        fps,
+        background_color,
     )
 
     # Start window thread
     canvas.start()
 
-    # Wait for window to be created, as it == in a separate thread and not blocking this thread
-    while canvas.root is None:
-        sleep(0.1)
+    # Wait for startup completion from the window thread.
+    canvas._startup_event.wait(timeout=10.0)
+
+    if canvas._startup_error is not None:
+        raise RuntimeError(
+            f"Failed to initialize OpenGL window backend: {canvas._startup_error}"
+        ) from canvas._startup_error
+
+    if not canvas._startup_event.is_set():
+        raise RuntimeError("Timed out waiting for window startup.")
+
+    if canvas.root is None:
+        raise RuntimeError("Window thread exited before creating a render window.")
+
+    background = Frame(
+        canvas,
+        width=canvas.width,
+        height=canvas.height,
+        fill=canvas.background_color,
+        border=None,
+        border_width=0,
+    ).place(0, 0)
+    background.resize = True
+    background.can_focus = False
+    background.can_click = False
+    canvas.background = background
+    canvas._ensure_resize_baseline(background, force=True)
 
     # Return the window
     return canvas
@@ -691,7 +832,9 @@ colors = [
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    canvas = Window(title=None, width=800, height=500).place(400, 300)
+    canvas = Window(
+        title=None, width=800, height=500, render_mode="image_gl", fps=60
+    ).place(400, 300)
     print(
         fonts_manager.loadfont(
             r"C:\Users\reube\nebulatk\examples\Fonts\HARLOWSI.TTF", private=False
@@ -770,7 +913,7 @@ def __main__():
     Entry(
         canvas,
         text="hi",
-        font=("Helvetica", 50),
+        font=("Comic Sans MS", 50),
         fill=[255, 67, 67, 45],
         border_width=2,
     ).place(0, 400).place(200, 400)
@@ -801,113 +944,31 @@ def __main__():
         )
         anim_group.start()
 
-    btn6 = Button(window, image=img)
+    btn6 = Button(
+        window,
+        image=img,
+        active_image="examples/Images/main_button_inactive2.png",
+        hover_image="examples/Images/main_button_active.png",
+        active_hover_image="examples/Images/main_button_active2.png",
+        command=lambda: print("clicked", btn6.width),
+    )
+    canvas.debug_font_resolution()
     btn6.place(0, 0)
     sleep(2)
+    print("resizing window")
     window.resize(1000, 800)  # Change size
+    print("configuring window")
     window.configure(title="New Title", resizable=(False, False))  # Change properties
+    print("hiding window")
     window.hide()  # Hide window
     sleep(4)
     window.show()
     window.taskbar_manager._initialize_custom_thumbnails()
     animate_btn()
+    sleep(30)
+    window.destroy()
+    canvas.destroy()
     # window = Window()
-
-    """def trigger_custom_thumbnail():
-        window.taskbar_manager.SetThumbnailClip(0, 0, 100, 100)
-
-    btn = Button(
-        window,
-        width=100,
-        height=100,
-        mode="toggle",
-        border_width=2,
-        command=trigger_custom_thumbnail,
-    )
-    btn.place(0, 0)
-
-    def animate_btn():
-        btn.width = 100
-        btn.height = 100
-        btn.place(0, 0)
-        btn.update()
-        keyframes = [
-            (
-                1.0,
-                {"x": 50, "y": 50},
-                animation_controller.Curves.ease_in_quad,
-            ),  # Move to (50, 50) in 1s
-            (
-                1,
-                {"x": 100, "y": 100},
-                animation_controller.Curves.bounce,
-                1,
-            ),  # Then to (100, 100) in 0.5s
-            animation_controller.Animation(
-                btn,
-                {"x": 0, "y": 0},
-                1,
-                animation_controller.Curves.ease_out_cubic,
-            ),  # Back to (0, 0) in 1s
-            [animation_controller.Animation(btn, {"width": 50}, 2.5), 0],
-        ]
-        anim_group = animation_controller.AnimationGroup(btn, keyframes, steps=60)
-        anim_group.start()
-
-    btn2 = Button(
-        window,
-        text="animate",
-        width=100,
-        height=50,
-        command=animate_btn,
-    )
-    btn2.place(100, 0)
-
-    anim2 = animation_controller.AnimationGroup(
-        btn2,
-        [
-            [animation_controller.Animation(btn2, {"width": 50}, 1), 0],
-            [animation_controller.Animation(btn2, {"height": 100}, 1), 0],
-        ],
-        steps=60,
-        looping=True,
-    )
-    anim2.start()
-    Entry(window, width=100, height=50, text="hello").place(0, 100)
-
-    widget = Button(
-        window,
-        text="hello",
-        width=100,
-        height=100,
-        fill="#FF0000",
-    ).place(
-        200, 200
-    )  # Red
-    anim = animation_controller.Animation(
-        widget, {"fill": "#00FF0000"}, duration=1.0, looping=True
-    )  # Animate to green
-    anim.start()
-
-    container = Container(window, width=200, height=50, fill="#FF0000")
-    container.place(20, 10)
-    print(container.maps)
-
-    button5 = Button(container, text="hello", width=100, height=100, fill="#FF0000")
-    button5.place(0, 0)
-
-    window.taskbar_manager.SetProgress(20)
-    window.taskbar_manager.SetThumbnailNotification("info")
-    # Add buttons to taskbar
-    window.taskbar_manager.AddMediaControlButtons({})
-
-    # Update play/pause state
-    window.taskbar_manager.UpdatePlayPauseButton(True)  # Show pause icon
-
-    # Disable next button if at end of playlist
-    window.taskbar_manager.SetButtonEnabled(
-        taskbar_manager.WindowsConstants.THUMB_BUTTON_FORWARD, False
-    )"""
 
 
 if __name__ == "__main__":

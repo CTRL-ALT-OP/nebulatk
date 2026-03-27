@@ -1,5 +1,4 @@
 from PIL import Image as pil
-from PIL import ImageTk as piltk
 from PIL import ImageDraw as pildraw
 
 import math
@@ -15,11 +14,12 @@ except ImportError:
 class Image:
     def __init__(self, image, _object=None):
         self.image = None
-        self.tk_images = {}
+        self._source_image = None
         self.bounds = []
 
         if type(image) is Image:
             self.image = image.image
+            self._source_image = self.image.copy() if self.image is not None else None
 
             if _object is not None:
                 # Resize image if size isn't specified
@@ -28,13 +28,11 @@ class Image:
                         _object.width - (_object.border_width * 2),
                         _object.height - (_object.border_width * 2),
                     )
-
-                # Convert image for tkinter
-                self.tk_images[_object.master] = convert_image(_object, self.image)
 
         elif type(image) is str:
             # Open image
             self.image = pil.open(image)
+            self._source_image = self.image.copy() if self.image is not None else None
             if _object is not None:
                 # Resize image if size isn't specified
                 if _object.width != 0 and _object.height != 0:
@@ -43,19 +41,13 @@ class Image:
                         _object.height - (_object.border_width * 2),
                     )
 
-                # Convert image for tkinter
-                self.tk_images[_object.master] = convert_image(_object, self.image)
-
         elif image is not None:
             self.image = image
-
-            if _object is not None:
-                self.tk_images[_object.master] = convert_image(_object, self.image)
+            self._source_image = self.image.copy() if self.image is not None else None
 
     def resize(self, width, height):
-        self.tk_images = {}
-        if width != 0 and height != 0:
-            self.image = self.image.resize(
+        if width != 0 and height != 0 and self._source_image is not None:
+            self.image = self._source_image.resize(
                 (
                     width,
                     height,
@@ -65,21 +57,20 @@ class Image:
         return self
 
     def flip(self, direction="horizontal"):
-        self.tk_images = {}
         if direction == "horizontal":
             self.image = self.image.transpose(pil.FLIP_LEFT_RIGHT)
         elif direction == "vertical":
             self.image = self.image.transpose(pil.FLIP_TOP_BOTTOM)
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def rotate(self, angle):
-        self.tk_images = {}
         pil_img = self.image.rotate(angle, expand=True)
         self.image = pil_img
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def recolor(self, color):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
 
@@ -95,7 +86,6 @@ class Image:
         return self._update_pil_data(pil_img, new_data)
 
     def set_transparency(self, transparency):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -108,7 +98,6 @@ class Image:
         return self._update_pil_data(pil_img, new_data)
 
     def increment_transparency(self, transparency):
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -139,7 +128,6 @@ class Image:
             "log": lambda x: transparency / math.log(255 + 1) * math.log(x + 1),
         }
 
-        self.tk_images = {}
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
         new_data = [
@@ -155,27 +143,16 @@ class Image:
     def _update_pil_data(self, pil_img, new_data):
         pil_img.putdata(new_data)
         self.image = pil_img
+        self._source_image = self.image.copy() if self.image is not None else None
         return self
 
     def tk_image(self, _object):
-        if _object.master not in self.tk_images:
-            self.tk_images[_object.master] = convert_image(_object, self.image)
-        return self.tk_images[_object.master]
+        return self.image
 
 
 def convert_image(_object, image):
-    # Handle Container objects
-    if hasattr(_object, "_window"):
-        # _object is a Container itself (when passed as master to create_image)
-        tkinter_root = _object._window.root
-    elif hasattr(_object.master, "_window"):
-        # _object.master is a Container (when a widget is parented to a container)
-        tkinter_root = _object.master._window.root
-    else:
-        # This is a regular window_internal object
-        tkinter_root = _object.master.root
-
-    return piltk.PhotoImage(image, master=tkinter_root)
+    # Backward-compatible shim: rendering always consumes PIL images directly.
+    return image
 
 
 def load_image(_object, image, return_both=False):
@@ -192,14 +169,14 @@ def load_image(_object, image, return_both=False):
         TkImage: Tkinter-compatible image
         PilImage: Pil image
     """
-    image_converted = None
+    loaded_image = None
     if image is not None:
         # Open image
-        image = pil.open(image)
+        loaded_image = pil.open(image)
 
         # Resize image if size isn't specified
         if _object.width != 0 and _object.height != 0:
-            image = image.resize(
+            loaded_image = loaded_image.resize(
                 (
                     _object.width - (_object.border_width * 2),
                     _object.height - (_object.border_width * 2),
@@ -207,11 +184,8 @@ def load_image(_object, image, return_both=False):
                 pil.NEAREST,
             )
 
-        # Convert image for tkinter
-        image_converted = convert_image(_object, image)
-
-    # Return both PhotoImage and PilImage objects if requested
-    return (image_converted, image) if return_both else image_converted
+    # Rendering always uses PIL images directly.
+    return (loaded_image, loaded_image) if return_both else loaded_image
 
 
 def load_image_generic(window, image, return_both=False):
@@ -227,16 +201,13 @@ def load_image_generic(window, image, return_both=False):
         TkImage: Tkinter-compatible image
         PilImage: Pil image
     """
-    image_converted = None
+    loaded_image = None
     if image is not None:
         # Open image
-        image = pil.open(image)
+        loaded_image = pil.open(image)
 
-        # Convert image for tkinter
-        image_converted = convert_image(window, image)
-
-    # Return both PhotoImage and PilImage objects if requested
-    return (image_converted, image) if return_both else image_converted
+    # Rendering always uses PIL images directly.
+    return (loaded_image, loaded_image) if return_both else loaded_image
 
 
 def create_image(fill, width, height, border, border_width, master):

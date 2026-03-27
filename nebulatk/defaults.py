@@ -18,7 +18,7 @@ def _offset(initial, amount):
 class new:
     def __init__(self, file=None):
         if file:
-            raise Warning("Not implemented yet")
+            raise NotImplementedError("Loading defaults from file is not implemented yet")
 
         self.default_text_color = colors_manager.Color("black")
 

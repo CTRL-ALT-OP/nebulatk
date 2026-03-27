@@ -52,6 +52,7 @@ class Slider(_widget):
         # Bound Variables
         slider_bounds_type: str = "default",
         slider_custom_bounds: list = None,
+        resize: bool = False,
     ):
         """Slider widget
 
@@ -105,6 +106,7 @@ class Slider(_widget):
             border=border,
             border_width=border_width,
             bounds_type=bounds_type,
+            resize=resize,
         )
         self.can_hover = False
         self.can_click = False

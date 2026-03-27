@@ -16,88 +16,59 @@ class TestFileDialog:
 
     @pytest.fixture
     def app(self):
-        """Create a test application window."""
-        window = ntk.Window(title="File Dialog Test", width=800, height=600)
-        yield window
-        window.close()
+        window = MagicMock()
+        window.leave_window = MagicMock()
+        return window
 
-    @patch("tkinter.filedialog.askopenfile")
-    def test_file_dialog_basic(self, mock_askopenfile, app):
-        """Test basic file dialog functionality."""
-        # Mock file object
+    @patch("nebulatk.file_manager._open_with_windows_native")
+    @patch("nebulatk.file_manager.sys.platform", "win32")
+    def test_file_dialog_windows(self, mock_windows_dialog, app):
+        """Uses native Windows backend."""
         mock_file = MagicMock()
-        mock_askopenfile.return_value = mock_file
+        mock_windows_dialog.return_value = mock_file
 
-        # Call FileDialog
-        result = ntk.FileDialog(app)
-
-        # Check that the dialog was opened with default parameters
-        mock_askopenfile.assert_called_once_with(
-            initialdir=None, mode="r", filetypes=(("All files", "*"))
-        )
-
-        # Check that the result is the mocked file
-        assert result == mock_file
-
-    @patch("tkinter.filedialog.askopenfile")
-    def test_file_dialog_custom_params(self, mock_askopenfile, app):
-        """Test file dialog with custom parameters."""
-        # Mock file object
-        mock_file = MagicMock()
-        mock_askopenfile.return_value = mock_file
-
-        # Custom parameters
-        initialdir = "/tmp"
-        mode = "rb"
-        filetypes = [
-            ("Text files", "*.txt"),
-            ("Python files", "*.py"),
-            ("All files", "*"),
-        ]
-
-        # Call FileDialog with custom parameters
         result = ntk.FileDialog(
-            app, initialdir=initialdir, mode=mode, filetypes=filetypes
+            app, initialdir=None, mode="r", filetypes=(("All files", "*"),)
         )
 
-        # Check that the dialog was opened with custom parameters
-        mock_askopenfile.assert_called_once_with(
-            initialdir=initialdir, mode=mode, filetypes=filetypes
+        mock_windows_dialog.assert_called_once_with(
+            None, "r", (("All files", "*"),)
         )
-
-        # Check that the result is the mocked file
         assert result == mock_file
-
-    @patch("tkinter.filedialog.askopenfile")
-    def test_file_dialog_cancel(self, mock_askopenfile, app):
-        """Test file dialog when user cancels."""
-        # Mock cancellation (returns None)
-        mock_askopenfile.return_value = None
-
-        # Call FileDialog
-        result = ntk.FileDialog(app)
-
-        # Check that the dialog was opened
-        mock_askopenfile.assert_called_once()
-
-        # Check that the result is None
-        assert result is None
-
-    @patch("tkinter.filedialog.askopenfile")
-    def test_file_dialog_with_window_state(self, mock_askopenfile, app):
-        """Test file dialog interaction with window state."""
-        # Mock file object
-        mock_file = MagicMock()
-        mock_askopenfile.return_value = mock_file
-
-        # Mock window leave_window method
-        app.leave_window = MagicMock()
-
-        # Call FileDialog
-        result = ntk.FileDialog(app)
-
-        # Check that leave_window was called twice (before and after dialog)
         assert app.leave_window.call_count == 2
 
-        # Check that the result is the mocked file
+    @patch("nebulatk.file_manager._open_with_macos_native")
+    @patch("nebulatk.file_manager.sys.platform", "darwin")
+    def test_file_dialog_macos(self, mock_macos_dialog, app):
+        """Uses native macOS backend."""
+        mock_file = MagicMock()
+        mock_macos_dialog.return_value = mock_file
+
+        result = ntk.FileDialog(app, initialdir="/tmp", mode="rb", filetypes=[])
+
+        mock_macos_dialog.assert_called_once_with("/tmp", "rb", [])
         assert result == mock_file
+        assert app.leave_window.call_count == 2
+
+    @patch("nebulatk.file_manager._open_with_linux_native")
+    @patch("nebulatk.file_manager.sys.platform", "linux")
+    def test_file_dialog_linux_cancel(self, mock_linux_dialog, app):
+        """Returns None when Linux picker is cancelled."""
+        mock_linux_dialog.return_value = None
+
+        result = ntk.FileDialog(app)
+
+        mock_linux_dialog.assert_called_once_with(None, "r", (("All files", "*"),))
+        assert result is None
+        assert app.leave_window.call_count == 2
+
+    @patch("nebulatk.file_manager._open_with_linux_native")
+    @patch("nebulatk.file_manager.sys.platform", "linux")
+    def test_file_dialog_always_restores_window_state(self, mock_linux_dialog, app):
+        """Ensures leave_window runs even on backend errors."""
+        mock_linux_dialog.side_effect = RuntimeError("dialog failed")
+
+        result = ntk.FileDialog(app)
+
+        assert result is None
+        assert app.leave_window.call_count == 2

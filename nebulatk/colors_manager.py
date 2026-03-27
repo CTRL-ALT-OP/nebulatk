@@ -26,6 +26,8 @@ class Color(str):
         """
         # Convert color to rgb
         color = self.rgba
+        if color is None:
+            return Color(None)
 
         # If RGBA
         if len(color) > 3:
@@ -65,6 +67,8 @@ class Color(str):
         """
         # Convert color to rgb
         color = self.rgba
+        if color is None:
+            return Color(None)
 
         # If RGBA
         if len(color) > 3:
@@ -96,9 +100,13 @@ class Color(str):
         return str(self.color)
 
     def __eq__(self, other):
+        if isinstance(other, Color):
+            return self.color == other.color
         return self.color == other
 
     def startswith(self, prefix) -> bool:
+        if self.color is None:
+            return False
         return self.color.startswith(prefix)
 
 
@@ -114,20 +122,40 @@ def convert_to_hex(color):
     # Load default color list
     global colors
 
+    if color is None:
+        return None
+
+    if type(color) is Color:
+        color = color.color
+
     # If color is a string,
     if type(color) is str:
-        # If doesn't start with '#', check if it's a hex string
-        if not color.startswith("#"):
-            # If it is a hex string, add '#' to the beginning and return it
-            if all(c in string.hexdigits for c in color):
-                return f"#{color}ff".lower()
+        stripped = color.strip()
+        if stripped.startswith("#"):
+            value = stripped.lstrip("#")
+            if len(value) == 6:
+                return stripped
+            if len(value) == 8:
+                return stripped
+            raise ValueError(
+                "Hex colors must be in #RRGGBB or #RRGGBBAA format."
+            )
 
-            # If it's not a hex string, it must be a default color
-            # Return hex string from default color
-            return f"{colors[color][0]}ff".lower()
+        # If it is a hex string, add '#' to the beginning and return it
+        if all(c in string.hexdigits for c in stripped):
+            if len(stripped) == 6:
+                return f"#{stripped}ff".lower()
+            if len(stripped) == 8:
+                return f"#{stripped}".lower()
+            raise ValueError(
+                "Hex colors without '#' must use 6 or 8 hex characters."
+            )
 
-        # If color is a hex string, return it
-        return color
+        # If it's not a hex string, it must be a default color name.
+        key = stripped.lower()
+        if key in colors:
+            return f"{colors[key][0]}ff".lower()
+        raise KeyError(color)
 
     elif type(color) is list:
         color = tuple(color)
@@ -135,9 +163,17 @@ def convert_to_hex(color):
     # If color is a tuple, check if it is RGB or RGBA
     # Convert to hex and return result
     if type(color) is tuple:
+        if not all(isinstance(channel, int) for channel in color):
+            raise TypeError("RGB/RGBA channels must be integers.")
+        if not all(0 <= channel <= 255 for channel in color):
+            raise ValueError("RGB/RGBA channels must be in range 0..255.")
         if len(color) > 3:
             return "#%02x%02x%02x%02x".lower() % color
         return "#%02x%02x%02xff".lower() % color
+
+    raise TypeError(
+        "Unsupported color type. Expected str, list, tuple, or Color."
+    )
 
 
 def convert_to_rgb(color):
@@ -152,26 +188,45 @@ def convert_to_rgb(color):
     # Load default color list
     global colors
 
+    if color is None:
+        return None
+
     # If color is a string,
     if type(color) in (str, Color):
         if type(color) is Color:
             color = color.color
+        if color is None:
+            return None
+        stripped = color.strip()
         # If doesn't start with '#', check if it's a hex string. If it isn't, it must be a default color.
-        if not color.startswith("#") and any(c not in string.hexdigits for c in color):
-            return (*colors[color][1], 255)
+        if not stripped.startswith("#") and any(
+            c not in string.hexdigits for c in stripped
+        ):
+            key = stripped.lower()
+            if key in colors:
+                return (*colors[key][1], 255)
+            raise KeyError(color)
         # Strip '#' off beginning
-        color = color.lstrip("#")
+        stripped = stripped.lstrip("#")
 
         # If RGBA convert to hex string with 4 channels
-        if len(color) > 6:
-            return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4, 6))
-
-        # Else convert to hex string with 3 channels
-        return (*(int(color[i : i + 2], 16) for i in (0, 2, 4)), 255)
+        if len(stripped) == 8:
+            return tuple(int(stripped[i : i + 2], 16) for i in (0, 2, 4, 6))
+        if len(stripped) == 6:
+            return (*(int(stripped[i : i + 2], 16) for i in (0, 2, 4)), 255)
+        raise ValueError("Hex colors must have 6 or 8 characters.")
 
     elif type(color) in (list, tuple):
+        if not all(isinstance(channel, int) for channel in color):
+            raise TypeError("RGB/RGBA channels must be integers.")
+        if not all(0 <= channel <= 255 for channel in color):
+            raise ValueError("RGB/RGBA channels must be in range 0..255.")
         color = (*color, 255) if len(color) < 4 else tuple(color)
         return color
+
+    raise TypeError(
+        "Unsupported color type. Expected str, list, tuple, or Color."
+    )
 
 
 def check_full_white_or_black(color):

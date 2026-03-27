@@ -15,8 +15,14 @@ import fonts_manager
 
 def test_create_font():
     assert fonts_manager.Font(None).font == ("Helvetica", -1)
+    assert fonts_manager.Font("default").font == ("Helvetica", -1)
 
     assert fonts_manager.Font("Arial").font == ("Arial", 10)
+
+
+def test_create_font_rejects_invalid_type():
+    with pytest.raises(TypeError):
+        fonts_manager.Font(123)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="windll only on Windows")
@@ -100,3 +106,44 @@ def test_loadfont_linux_branch(monkeypatch):
     # Now assert directly on *our* dummy
     assert dummy.add_calls == [(dummy.config, b"/tmp/foo.ttf")]
     assert dummy.build_calls == [dummy.config]
+
+
+def test_windows_font_resolver_prefers_style(monkeypatch):
+    catalog = (
+        {
+            "family_token": "timesnewroman",
+            "style_tokens": set(),
+            "path": r"C:\Windows\Fonts\times.ttf",
+        },
+        {
+            "family_token": "timesnewroman",
+            "style_tokens": {"bold"},
+            "path": r"C:\Windows\Fonts\timesbd.ttf",
+        },
+    )
+    monkeypatch.setattr(fonts_manager, "_windows_font_catalog", lambda: catalog)
+    assert (
+        fonts_manager._resolve_windows_font_path("Times New Roman", "bold")
+        == r"C:\Windows\Fonts\timesbd.ttf"
+    )
+    assert (
+        fonts_manager._resolve_windows_font_path("Times New Roman", "normal")
+        == r"C:\Windows\Fonts\times.ttf"
+    )
+
+
+def test_get_font_debug_info_reports_selected_candidate(monkeypatch):
+    class DummyFont:
+        path = r"C:\Windows\Fonts\arial.ttf"
+
+    monkeypatch.setattr(
+        fonts_manager, "_font_candidates", lambda family, style: (["arial.ttf"], None)
+    )
+    monkeypatch.setattr(fonts_manager.ImageFont, "truetype", lambda candidate, size: DummyFont())
+    info = fonts_manager.get_font_debug_info(("Arial", 12, "normal"))
+
+    assert info["requested_family"] == "Arial"
+    assert info["requested_size"] == 12
+    assert info["selected_candidate"] == "arial.ttf"
+    assert info["loaded_font_path"] == r"C:\Windows\Fonts\arial.ttf"
+    assert info["used_default_font"] is False

@@ -76,7 +76,7 @@ def test_bounds_fallback():
 
 def test_hit_bounds():
     """Test hit_bounds function."""
-    window = ntk.Window()
+    window = ntk.Window(render_mode="image_gl", fps=30)
     label = ntk.Label(window, text="hi", width=10, height=10).place()
 
     assert bounds_manager.check_hit(label, 1, 1)
@@ -94,7 +94,7 @@ def test_hit_custom():
         border_width=1,
         master=None,
     )
-    window = ntk.Window()
+    window = ntk.Window(render_mode="image_gl", fps=30)
     label = ntk.Button(window, image=test_image, width=5, height=5).place()
 
     assert not bounds_manager.check_hit(label, 0, 0)
