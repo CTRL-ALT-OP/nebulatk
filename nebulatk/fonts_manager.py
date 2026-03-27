@@ -51,6 +51,10 @@ class Font:
         elif type(font) in (list, tuple):
             # Assume font is (font, size)
             self.font = font
+        else:
+            raise TypeError(
+                "font must be 'default', None, a font name string, or a tuple/list"
+            )
 
 
 def _normalize_font(font):
@@ -309,7 +313,7 @@ ALPHA = [
 
 i_e = len(ALPHA)
 ALPHA.extend(str.upper(ALPHA[i]) for i in range(i_e))
-NUMERIC = list("12345567890")
+NUMERIC = list("0123456789")
 SYMBOL = list("`~!@#$%^&*()_+-={}[]|\\:\";',.></? ")
 ALPHANUMERIC = ALPHA + NUMERIC
 ALPHANUMERIC_PLUS = ALPHANUMERIC + SYMBOL

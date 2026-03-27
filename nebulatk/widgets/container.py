@@ -145,7 +145,7 @@ class Container(Component):
 
     def typing(self, event):
         if self.active is not None and self.active.can_type:
-            self.active.typed(event.char)
+            self.active.typed(event)
 
     def typing_up(self, event):
         pass

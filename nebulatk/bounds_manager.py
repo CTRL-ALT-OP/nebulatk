@@ -70,7 +70,6 @@ def check_hit(_object, x, y):
             break
         root = root.root
 
-    state = "normal" if global_visible else "hidden"
     if not global_visible:
         return False
 

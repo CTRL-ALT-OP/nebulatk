@@ -7,12 +7,12 @@ import warnings
 
 from collections.abc import Iterable
 
-try:
-    import colors_manager
-    import standard_methods
-except ImportError:
+if __package__:
     from . import colors_manager
     from . import standard_methods
+else:
+    import colors_manager
+    import standard_methods
 
 
 class Curves:

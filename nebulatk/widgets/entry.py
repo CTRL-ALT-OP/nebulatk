@@ -109,14 +109,21 @@ class Entry(_widget):
 
         self._selection_bg.can_focus = False
 
+    def _get_text_start_x(self, text=None):
+        if text is None:
+            text = self.text
+        total_width = fonts_manager.measure_text(self.master, self.font, text)
+        if self.justify == "left":
+            return 0
+        if self.justify == "right":
+            return self.width - total_width
+        return self.width / 2 - total_width / 2
+
     def _update_cursor_position(self):
         relative_cursor_position = self.cursor_position - self.slice[0]
         text_width = fonts_manager.measure_text(
             self.master, self.font, self.text[:relative_cursor_position]
         )
-
-        # New calculation for justify = right
-        full_text_width = fonts_manager.measure_text(self.master, self.font, self.text)
 
         # Adjust cursor height to match font height
         self.cursor.height = self.font[1] * 1.2 if hasattr(self, "font") else 14
@@ -124,19 +131,7 @@ class Entry(_widget):
         # Center vertically based on entry height
         self.cursor.y = (self.height - self.cursor.height) / 2
 
-        if self.justify == "left":
-            self.cursor.x = (
-                text_width - 1
-            )  # Adjust to be more centered between characters
-        elif self.justify == "right":
-            self.cursor.x = text_width + (
-                self.width - full_text_width - 1
-            )  # Adjust to be more centered between characters
-        elif self.justify == "center":
-            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
-            self.cursor.x = (
-                self.width / 2 - total_width / 2 + text_width - 1
-            )  # Adjust to be more centered between characters
+        self.cursor.x = self._get_text_start_x() + text_width - 1
         self.update()
 
     def get(self):
@@ -148,14 +143,7 @@ class Entry(_widget):
         rel_x = click_x - self.x
 
         # Adjust for text justification
-        if self.justify == "center":
-            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
-            rel_x = rel_x - (self.width / 2 - total_width / 2)
-        elif self.justify == "right":
-            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
-            rel_x = rel_x - (self.width - total_width - 5)
-        elif self.justify == "left":
-            rel_x = rel_x - 5
+        rel_x = rel_x - self._get_text_start_x()
 
         # Find the closest character position
 
@@ -184,7 +172,6 @@ class Entry(_widget):
     def clicked(self, x=None, y=None):
         super().clicked()
         self.cursor.show()
-        self.cursor.alpha = 1.0  # Ensure cursor is visible when clicked
 
         # If click position is provided, update cursor position
         if x is not None:
@@ -231,13 +218,10 @@ class Entry(_widget):
 
             start = max(self.slice[0], start) - self.slice[0]
             end = min(self.slice[1], end) - self.slice[0]
-            total_width = fonts_manager.measure_text(self.master, self.font, self.text)
             sel_start_x = fonts_manager.measure_text(
                 self.master, self.font, self.text[:start]
             )
-            sel_start_x = (
-                self.width / 2 - total_width / 2 + sel_start_x
-            )  # Adjust to be more centered between characters
+            sel_start_x = self._get_text_start_x() + sel_start_x
 
             sel_end_x = sel_start_x + fonts_manager.measure_text(
                 self.master, self.font, self.text[start:end]
@@ -248,11 +232,6 @@ class Entry(_widget):
             self._selection_bg.show()
         else:
             self._selection_bg.hide()
-
-    def _get_char_offset(self, index):
-        """Helper to approximate pixel offset for a character index."""
-        # This is a placeholder; actual implementation depends on font metrics
-        return index * 10  # Approximate width per character
 
     def get_selection(self):
         """Return the currently selected text."""

@@ -11,7 +11,11 @@ from dataclasses import dataclass
 
 from PIL import Image as PILImage
 from PIL import ImageDraw
-from PIL import ImageFont
+
+try:
+    from . import fonts_manager
+except ImportError:
+    import fonts_manager
 
 try:
     import glfw
@@ -180,9 +184,9 @@ class PILImageRenderer:
         if text not in ("", None) and font_spec is not None:
             try:
                 font_size = max(1, int(font_spec[1]))
-                text_font = ImageFont.truetype("arial.ttf", font_size)
+                text_font = fonts_manager._load_font(str(font_spec[0]), font_size)
             except Exception:
-                text_font = ImageFont.load_default()
+                text_font = fonts_manager._load_font("arial", 12)
             justify = self._safe_attr(widget, "justify", "center")
             if justify == "left":
                 text_x = abs_x
@@ -251,31 +255,6 @@ class NativeEvent:
     y: int = 0
     char: str = ""
     keysym: str = ""
-
-
-_GLFW_LOCK = threading.Lock()
-_GLFW_REFCOUNT = 0
-_GLFW_API_LOCK = threading.RLock()
-
-
-def _glfw_init_ref():
-    global _GLFW_REFCOUNT
-    with _GLFW_LOCK:
-        if _GLFW_REFCOUNT == 0:
-            if glfw is None or not glfw.init():
-                return False
-        _GLFW_REFCOUNT += 1
-        return True
-
-
-def _glfw_terminate_ref():
-    global _GLFW_REFCOUNT
-    with _GLFW_LOCK:
-        if _GLFW_REFCOUNT <= 0:
-            return
-        _GLFW_REFCOUNT -= 1
-        if _GLFW_REFCOUNT == 0 and glfw is not None:
-            glfw.terminate()
 
 
 class NativeGLWindow:

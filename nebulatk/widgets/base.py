@@ -578,7 +578,7 @@ class _widget(_widget_properties, Component):
 
         self._position = [0, 0]
 
-        self.orientation = 0
+        self.orientation = orientation
 
         self._colors = {}
 

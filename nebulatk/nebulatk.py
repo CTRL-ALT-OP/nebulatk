@@ -8,7 +8,7 @@ from time import sleep
 
 # Importing from another file works differently than if running this file directly for some reason.
 # Import all required modules from nebulatk
-try:
+if __package__:
     from . import (
         bounds_manager,
         fonts_manager,
@@ -28,7 +28,7 @@ try:
     # Import widget classes from widgets module
     from .widgets import Button, Label, Entry, Frame, Slider, Container
 
-except ImportError:
+else:
     import bounds_manager
     import fonts_manager
     import colors_manager
