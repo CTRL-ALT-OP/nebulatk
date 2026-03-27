@@ -862,8 +862,12 @@ class _widget(_widget_properties, Component):
 
     def _show(self, root=False):
         """Shows the widget"""
-        # Show makes all items that are part of this widget visible
-        standard_methods.flop_on(self)
+        # Respect widget-level visibility so a parent show() does not
+        # force explicitly hidden descendants visible again.
+        if self.visible:
+            standard_methods.flop_on(self)
+        else:
+            standard_methods.flop_off(self)
 
         # If this widget is the root widget, hide all its children
         if root:

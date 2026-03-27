@@ -927,11 +927,77 @@ def __main__():
     # canvas.destroy()
     window = Window(width=800, height=600)
 
+    details_frame = Frame(
+        window,
+        width=340,
+        height=240,
+        fill=[26, 34, 52, 204],  # 80% opacity
+        border=[160, 190, 255, 220],
+        border_width=2,
+    ).place(250, 130).hide()
+
+    Label(
+        details_frame,
+        text="Overlay Frame",
+        width=300,
+        height=36,
+        font=("Comic Sans MS", 20),
+        fill=[70, 95, 150, 220],
+        border_width=0,
+    ).place(20, 16)
+
+    Label(
+        details_frame,
+        text="I show with the frame",
+        width=200,
+        height=32,
+        fill=[48, 62, 98, 215],
+        border_width=0,
+    ).place(20, 64)
+
+    hidden_label = Label(
+        details_frame,
+        text="I stay hidden",
+        width=120,
+        height=30,
+        fill=[120, 75, 130, 210],
+        border_width=0,
+    ).place(210, 64).hide()
+
+    frame_entry = Entry(
+        details_frame,
+        text="hidden entry",
+        width=200,
+        height=30,
+        border_width=1,
+        fill=[255, 255, 255, 230],
+        border=[30, 40, 64, 255],
+    ).place(20, 110).hide()
+
+    Slider(
+        details_frame,
+        width=220,
+        height=18,
+        slider_width=18,
+        slider_height=18,
+        fill=[73, 84, 118, 210],
+        border=[30, 40, 64, 255],
+        slider_fill=[174, 202, 255, 235],
+        slider_border_width=1,
+    ).place(20, 160)
+
+    def toggle_details_frame():
+        if details_frame.visible:
+            details_frame.hide()
+        else:
+            details_frame.show()
+        print("button 1 clicked - frame visible:", details_frame.visible)
+
     def animate_btn():
-        btn6.width = 100
-        btn6.height = 100
-        btn6.place(0, 0)
-        btn6.update()
+        btn1.width = 100
+        btn1.height = 100
+        btn1.place(0, 0)
+        btn1.update()
         keyframes = [
             (
                 1.0,
@@ -940,20 +1006,24 @@ def __main__():
             ),  # Move to (50, 50) in 1s
         ]
         anim_group = animation_controller.AnimationGroup(
-            btn6, keyframes, steps=60, looping=True
+            btn1, keyframes, steps=60, looping=True
         )
         anim_group.start()
 
-    btn6 = Button(
+    btn1 = Button(
         window,
         image=img,
         active_image="examples/Images/main_button_inactive2.png",
         hover_image="examples/Images/main_button_active.png",
         active_hover_image="examples/Images/main_button_active2.png",
-        command=lambda: print("clicked", btn6.width),
+        command=toggle_details_frame,
     )
+
+    btn2 = Button(window, text="Button 2", width=120, height=40, border_width=2)
+
     canvas.debug_font_resolution()
-    btn6.place(0, 0)
+    btn1.place(0, 0)
+    btn2.place(120, 20)
     sleep(2)
     print("resizing window")
     window.resize(1000, 800)  # Change size

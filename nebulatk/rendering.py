@@ -170,6 +170,20 @@ class PILImageRenderer:
             )
         return _to_rgba(self._safe_attr(widget, "text_color", None))
 
+    def _alpha_draw_rectangle(self, frame, bounds, fill=None, outline=None, width=0):
+        """Draw rectangle via alpha compositing so transparent colors blend."""
+        layer = PILImage.new("RGBA", frame.size, (0, 0, 0, 0))
+        layer_draw = ImageDraw.Draw(layer, "RGBA")
+        layer_draw.rectangle(bounds, fill=fill, outline=outline, width=width)
+        frame.alpha_composite(layer)
+
+    def _alpha_draw_text(self, frame, position, text, fill, font, anchor):
+        """Draw text via alpha compositing for correct transparency behavior."""
+        layer = PILImage.new("RGBA", frame.size, (0, 0, 0, 0))
+        layer_draw = ImageDraw.Draw(layer, "RGBA")
+        layer_draw.text(position, text, fill=fill, font=font, anchor=anchor)
+        frame.alpha_composite(layer)
+
     def resolve_widget_font_debug(self, widget):
         """Return renderer-relevant font diagnostics for a text widget."""
         text = self._safe_attr(widget, "text", "")
@@ -199,7 +213,8 @@ class PILImageRenderer:
 
         fill = self._resolve_fill(widget)
         if width > 0 and height > 0 and (fill is not None or (outline is not None and border_width > 0)):
-            draw_ctx.rectangle(
+            self._alpha_draw_rectangle(
+                frame,
                 [abs_x, abs_y, abs_x + width, abs_y + height],
                 fill=fill,
                 outline=outline,
@@ -237,12 +252,13 @@ class PILImageRenderer:
                 text_x = abs_x + (width / 2)
                 anchor = "mm"
             text_y = abs_y + (height / 2)
-            draw_ctx.text(
+            self._alpha_draw_text(
+                frame,
                 (text_x, text_y),
                 text,
-                fill=self._resolve_text_fill(widget),
-                font=text_font,
-                anchor=anchor,
+                self._resolve_text_fill(widget),
+                text_font,
+                anchor,
             )
 
     def _render_children(
