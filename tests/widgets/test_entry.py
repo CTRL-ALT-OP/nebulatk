@@ -577,3 +577,29 @@ def test_entry_text_justification(justify_value, basic_entry) -> None:
         center_x_pos = entry._find_cursor_position_from_click(150)
 
         assert left_x_pos != right_x_pos != center_x_pos
+
+
+def test_entry_orientation_is_applied_from_constructor(canvas: ntk.Window) -> None:
+    entry = ntk.Entry(canvas, text="Orientation", width=120, height=30, orientation=45).place()
+    assert entry.orientation == 45
+
+
+def test_entry_selection_highlight_respects_justify_offsets(basic_entry) -> None:
+    entry = basic_entry
+    entry.entire_text = "ABCDE"
+    entry.text = "ABCDE"
+    entry.slice = [0, len(entry.text)]
+    entry._selection_start = 1
+    entry._selection_end = 3
+
+    with patch.object(ntk.fonts_manager, "measure_text", side_effect=lambda _root, _font, text: len(text) * 10):
+        expected_by_justify = {
+            "left": 10,
+            "center": (entry.width / 2 - (len(entry.text) * 10) / 2) + 10,
+            "right": (entry.width - (len(entry.text) * 10)) + 10,
+        }
+        for justify, expected_x in expected_by_justify.items():
+            entry.justify = justify
+            entry._update_selection_highlight()
+            assert entry._selection_bg.width == 20
+            assert entry._selection_bg.x == expected_x

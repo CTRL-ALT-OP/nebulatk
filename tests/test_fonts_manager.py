@@ -20,6 +20,11 @@ def test_create_font():
     assert fonts_manager.Font("Arial").font == ("Arial", 10)
 
 
+def test_create_font_rejects_invalid_type():
+    with pytest.raises(TypeError):
+        fonts_manager.Font(123)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="windll only on Windows")
 @patch("ctypes.windll.gdi32.AddFontResourceExW")
 def test_load_font(mock_windll):

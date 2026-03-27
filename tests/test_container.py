@@ -102,3 +102,17 @@ def test_container_event_handling_routes_to_child(app):
     container.hover(event)
     container.typing(event)
 
+
+def test_container_typing_forwards_full_event_object(app):
+    container = ntk.Container(app, width=300, height=200).place(50, 50)
+    active = MagicMock()
+    active.can_type = True
+    container.active = active
+
+    event = MagicMock()
+    event.keysym = "Left"
+    event.char = ""
+
+    container.typing(event)
+    active.typed.assert_called_once_with(event)
+
