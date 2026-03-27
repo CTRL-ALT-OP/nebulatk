@@ -89,12 +89,20 @@ def test_window_image_gl_render_cycle(image_gl_window: ntk.Window) -> None:
     while image_gl_window.renderer is None and time.time() < timeout_at:
         time.sleep(0.01)
 
-    widget = ntk.Frame(image_gl_window, width=90, height=70, fill="#ff0000ff").place(10, 10)
+    widget = ntk.Frame(image_gl_window, width=90, height=70, fill="#e31234ff").place(10, 10)
     assert widget in image_gl_window.children
 
     frame = _wait_for_frame(image_gl_window)
     assert frame is not None
     assert frame.size == (image_gl_window.width, image_gl_window.height)
+
+    inside = frame.getpixel((20, 20))
+    outside = frame.getpixel((150, 150))
+    assert inside[0] > 200
+    assert inside[1] < 80
+    assert inside[2] < 100
+    assert inside[3] > 0
+    assert outside != inside
 
 
 def test_window_image_gl_resize_updates_renderer(image_gl_window: ntk.Window) -> None:

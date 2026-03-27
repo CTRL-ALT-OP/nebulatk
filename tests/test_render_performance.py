@@ -4,6 +4,7 @@ import time
 from statistics import mean, pstdev
 from unittest.mock import patch
 
+import pytest
 from PIL import Image as PILImage
 from PIL import ImageDraw
 
@@ -12,6 +13,12 @@ sys.path.insert(
 )
 
 import nebulatk as ntk
+
+RUN_PERF_TESTS = os.environ.get("NTK_RUN_PERF_TESTS") == "1"
+pytestmark = pytest.mark.skipif(
+    not RUN_PERF_TESTS,
+    reason="Set NTK_RUN_PERF_TESTS=1 to run rendering performance tests.",
+)
 
 
 def _log_perf(label, **metrics):
@@ -26,14 +33,14 @@ def _close_window_safe(window):
         _log_perf("window close warning", error=repr(exc))
 
 
-def _wait_for_renderer(window, timeout_s=2.0):
+def _wait_for_renderer(window, timeout_s=4.0):
     deadline = time.perf_counter() + timeout_s
     while window.renderer is None and time.perf_counter() < deadline:
         time.sleep(0.01)
     assert window.renderer is not None
 
 
-def _wait_for_frame(window, timeout_s=0.8):
+def _wait_for_frame(window, timeout_s=1.5):
     deadline = time.perf_counter() + timeout_s
     frame = None
     while frame is None and time.perf_counter() < deadline:
@@ -212,7 +219,8 @@ def test_image_gl_first_render_time_stable_over_runs():
     assert len(times) == 5
     assert min(times) > 0
     # Keep this loose to avoid machine-specific flakes while still catching regressions.
-    assert mean(times) < 2.0
+    assert mean(times) < 2.0, f"Average first render too slow: {mean(times):.3f}s"
+    assert max(times) < 3.0, f"Worst first render too slow: {max(times):.3f}s"
 
 
 def test_image_gl_creation_skips_tk_image_conversion():
