@@ -4,6 +4,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from PIL import Image as PILImage
 
 sys.path.insert(
@@ -145,3 +146,25 @@ def test_opengl_image_display_draw_is_noop_in_proxy_mode():
 
     # Should return immediately without touching GLFW/GL state.
     assert display.draw() is None
+
+
+def test_handle_process_message_records_startup_error():
+    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window._window_id = "native-test"
+    window._startup_error = None
+
+    window._handle_process_message(
+        {"type": "error", "window_id": "native-test", "reason": "glfw.init failed"}
+    )
+    assert window._startup_error == "glfw.init failed"
+
+
+def test_wait_for_process_ready_raises_with_startup_error():
+    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window._hwnd = 0
+    window._startup_error = "glfw.create_window() failed."
+    window._process_events = lambda: None
+    window._process = SimpleNamespace(is_alive=lambda: False)
+
+    with pytest.raises(RuntimeError, match="glfw.create_window\\(\\) failed\\."):
+        window._wait_for_process_ready()

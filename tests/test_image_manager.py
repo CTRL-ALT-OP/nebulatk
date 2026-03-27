@@ -50,19 +50,21 @@ def test_convert_image_returns_pil():
     assert isinstance(converted, PILImage.Image)
 
 
-def test_load_image_generic_returns_none_for_image_gl(test_image_path):
+def test_load_image_generic_returns_pil_for_image_gl(test_image_path):
     mock_window = MagicMock()
     mock_window.render_mode = "image_gl"
     mock_window.master = None
 
     converted = image_manager.load_image_generic(mock_window, test_image_path)
-    assert converted is None
+    assert isinstance(converted, PILImage.Image)
+    converted.close()
 
     converted, pil_image = image_manager.load_image_generic(
         mock_window, test_image_path, return_both=True
     )
-    assert converted is None
+    assert isinstance(converted, PILImage.Image)
     assert isinstance(pil_image, PILImage.Image)
+    converted.close()
     pil_image.close()
 
 

@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 import ctypes
+import logging
 from dataclasses import dataclass
 
 from PIL import Image as PILImage
@@ -23,6 +24,8 @@ try:
 except Exception:
     glfw = None
     GL = None
+
+logger = logging.getLogger(__name__)
 
 
 _GLFW_SPECIAL_KEY_NAMES = {
@@ -178,7 +181,7 @@ class PILImageRenderer:
         info["text_length"] = len(str(text))
         return info
 
-    def _draw_widget(self, frame, widget, parent_x, parent_y, parent_visible=True):
+    def _draw_widget(self, frame, draw_ctx, widget, parent_x, parent_y, parent_visible=True):
         visible = (
             parent_visible
             and self._safe_attr(widget, "visible", True)
@@ -196,15 +199,12 @@ class PILImageRenderer:
 
         fill = self._resolve_fill(widget)
         if width > 0 and height > 0 and (fill is not None or (outline is not None and border_width > 0)):
-            layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-            layer_draw = ImageDraw.Draw(layer)
-            layer_draw.rectangle(
+            draw_ctx.rectangle(
                 [abs_x, abs_y, abs_x + width, abs_y + height],
                 fill=fill,
                 outline=outline,
                 width=border_width,
             )
-            frame.alpha_composite(layer)
 
         img = self._resolve_image(widget)
         if img is not None:
@@ -237,22 +237,23 @@ class PILImageRenderer:
                 text_x = abs_x + (width / 2)
                 anchor = "mm"
             text_y = abs_y + (height / 2)
-            layer = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-            layer_draw = ImageDraw.Draw(layer)
-            layer_draw.text(
+            draw_ctx.text(
                 (text_x, text_y),
                 text,
                 fill=self._resolve_text_fill(widget),
                 font=text_font,
                 anchor=anchor,
             )
-            frame.alpha_composite(layer)
 
-    def _render_children(self, frame, children, parent_x=0, parent_y=0, parent_visible=True):
+    def _render_children(
+        self, frame, draw_ctx, children, parent_x=0, parent_y=0, parent_visible=True
+    ):
         # Widget lists are kept front-to-back for hit testing (index 0 is topmost).
         # Rendering must be back-to-front so lower layers are painted first.
         for child in reversed(children):
-            self._draw_widget(frame, child, parent_x, parent_y, parent_visible=parent_visible)
+            self._draw_widget(
+                frame, draw_ctx, child, parent_x, parent_y, parent_visible=parent_visible
+            )
             child_visible = (
                 parent_visible
                 and self._safe_attr(child, "visible", True)
@@ -262,6 +263,7 @@ class PILImageRenderer:
             if child_children:
                 self._render_children(
                     frame,
+                    draw_ctx,
                     child_children,
                     parent_x + int(self._safe_attr(child, "x", 0) or 0),
                     parent_y + int(self._safe_attr(child, "y", 0) or 0),
@@ -277,7 +279,15 @@ class PILImageRenderer:
             return None
 
         frame = PILImage.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
-        self._render_children(frame, self.window.children, parent_x=0, parent_y=0, parent_visible=True)
+        draw_ctx = ImageDraw.Draw(frame, "RGBA")
+        self._render_children(
+            frame,
+            draw_ctx,
+            self.window.children,
+            parent_x=0,
+            parent_y=0,
+            parent_visible=True,
+        )
         self._last_render = now
         self._last_frame = frame
         self._redraw_requested = False
@@ -329,6 +339,7 @@ class NativeGLWindow:
         self._event_queue = self._ctx.Queue()
         self._response_queue = self._ctx.Queue()
         self._hwnd = 0
+        self._startup_error = None
         self._process = self._ctx.Process(
             target=_native_window_process_main,
             args=(
@@ -379,9 +390,17 @@ class NativeGLWindow:
             self._process_events()
             if self._hwnd:
                 return
+            if self._startup_error is not None:
+                raise RuntimeError(
+                    f"Failed to initialize native window process: {self._startup_error}"
+                )
             if not self._process.is_alive():
                 break
             time.sleep(0.01)
+        if self._startup_error is not None:
+            raise RuntimeError(
+                f"Failed to initialize native window process: {self._startup_error}"
+            )
         raise RuntimeError("Failed to initialize native window process.")
 
     def _send_native_command(self, command, expect_response=False, timeout=2.0):
@@ -419,6 +438,9 @@ class NativeGLWindow:
         msg_type = message.get("type")
         if msg_type == "ready" and message.get("window_id") == self._window_id:
             self._hwnd = int(message.get("hwnd") or 0)
+            return
+        if msg_type == "error" and message.get("window_id") == self._window_id:
+            self._startup_error = str(message.get("reason") or "unknown native error")
             return
         if msg_type == "event" and message.get("window_id") == self._window_id:
             name = message.get("name")
@@ -680,7 +702,7 @@ class NativeGLWindow:
             try:
                 self._send_native_command({"op": "quit"})
             except Exception:
-                pass
+                logger.exception("Failed sending quit to native window process.")
             if self._process is not None:
                 self._process.join(timeout=1.0)
                 if self._process.is_alive():
@@ -704,9 +726,23 @@ def _native_window_process_main(
     event_queue,
     response_queue,
 ):
+    def report_startup_error(reason):
+        try:
+            event_queue.put(
+                {
+                    "type": "error",
+                    "window_id": window_id,
+                    "reason": str(reason),
+                }
+            )
+        except Exception:
+            pass
+
     if glfw is None or GL is None:
+        report_startup_error("OpenGL backend unavailable (glfw or OpenGL module missing).")
         return
     if not glfw.init():
+        report_startup_error("glfw.init() failed.")
         return
 
     try:
@@ -719,6 +755,7 @@ def _native_window_process_main(
 
         window = glfw.create_window(int(width), int(height), str(title), None, None)
         if not window:
+            report_startup_error("glfw.create_window() failed.")
             return
         glfw.make_context_current(window)
         glfw.swap_interval(0)
@@ -899,6 +936,9 @@ def _native_window_process_main(
                 running = False
                 glfw.set_window_should_close(window, True)
             time.sleep(0.001)
+    except Exception as exc:
+        report_startup_error(f"Native window process exception: {exc}")
+        traceback.print_exc()
     finally:
         try:
             event_queue.put({"type": "closed", "window_id": window_id})

@@ -154,6 +154,8 @@ class Animation:
         self.duration = duration
         self.current_values = {}
         self.target_values = {}
+        self._configured_target_attributes = target_attributes
+        self._registered_active = False
         self.update_current_values(target_attributes)
         self.running = False
         self.manually_stopped = False
@@ -163,7 +165,6 @@ class Animation:
         self.looping = looping
 
     def update_current_values(self, target_attributes: dict[str, float | str]):
-
         if not isinstance(target_attributes, dict):
             warnings.warn(
                 "target_attributes must be a dictionary, skipping...",
@@ -171,6 +172,8 @@ class Animation:
                 stacklevel=2,
             )
             return
+        current_values = {}
+        target_values = {}
         for attr, target_val in target_attributes.items():
             if not hasattr(self.widget, attr):
                 warnings.warn(
@@ -201,8 +204,8 @@ class Animation:
                             stacklevel=2,
                         )
                         continue
-                    self.current_values[attr] = current_rgb  # [r, g, b, a]
-                    self.target_values[attr] = target_rgb  # [r, g, b, a]
+                    current_values[attr] = current_rgb  # [r, g, b, a]
+                    target_values[attr] = target_rgb  # [r, g, b, a]
                 except Exception as e:
                     warnings.warn(
                         f"Invalid color for {attr}: {target_val}, {e}, skipping...",
@@ -212,8 +215,8 @@ class Animation:
             elif isinstance(current_val, (int, float)) and isinstance(
                 target_val, (int, float)
             ):
-                self.current_values[attr] = float(current_val)
-                self.target_values[attr] = float(target_val)
+                current_values[attr] = float(current_val)
+                target_values[attr] = float(target_val)
             else:
                 warnings.warn(
                     f"Attribute {attr} is not numeric or a valid color, skipping...",
@@ -221,15 +224,49 @@ class Animation:
                     stacklevel=2,
                 )
                 continue
+        self.current_values = current_values
+        self.target_values = target_values
+
+    def _run_on_ui_thread(self, callback):
+        master = getattr(self.widget, "master", None)
+        if master is not None and hasattr(master, "_execute_in_window_thread"):
+            try:
+                return master._execute_in_window_thread(callback)
+            except RuntimeError:
+                return callback()
+        return callback()
+
+    def _register_active(self):
+        master = getattr(self.widget, "master", None)
+        active = getattr(master, "active_animations", None)
+        if active is None or self._registered_active:
+            return
+        active.append(self)
+        self._registered_active = True
+
+    def _unregister_active(self):
+        master = getattr(self.widget, "master", None)
+        active = getattr(master, "active_animations", None)
+        if active is None or not self._registered_active:
+            return
+        if self in active:
+            active.remove(self)
+        self._registered_active = False
 
     def start(self) -> None:
         """Animate the widget to target coordinates with specified easing curve.
 
         Args:
         """
-        self.update_current_values(self.target_values)
-        self.widget.master.active_animations.append(self)
+        if self.running:
+            return
+        self._run_on_ui_thread(
+            lambda: self.update_current_values(self._configured_target_attributes)
+        )
+        self._register_active()
         self.start_values = self.current_values.copy()
+        self.step = 0
+        self.manually_stopped = False
         self.running = True
         if not self.threadless:
             self.thread = threading.Thread(target=self.run)
@@ -240,8 +277,7 @@ class Animation:
             self.running = False
             # Set a flag to indicate that the animation was stopped manually
             self.manually_stopped = True
-        if self in self.widget.master.active_animations:
-            self.widget.master.active_animations.remove(self)
+        self._unregister_active()
 
     def join(self, timeout):
         if self.thread:
@@ -305,6 +341,9 @@ class Animation:
         self.current_values = updated_values
         self.step += direction
 
+    def tick_on_ui_thread(self, direction: int = 1):
+        return self._run_on_ui_thread(lambda: self.tick(direction))
+
     def run(self) -> None:
         """
         Run the animation loop, updating all specified attributes.
@@ -317,37 +356,40 @@ class Animation:
                 for _ in range(int(self.steps * self.duration)):
                     if not self.running:
                         break
-                    self.tick()
+                    self.tick_on_ui_thread()
                     sleep(1 / self.steps)
                 for _ in range(int(self.steps * self.duration)):
                     if not self.running:
                         break
-                    self.tick(-1)
+                    self.tick_on_ui_thread(-1)
                     sleep(1 / self.steps)
         else:
             for _ in range(int(self.steps * self.duration)):
                 if not self.running:
                     break
-                self.tick()
+                self.tick_on_ui_thread()
                 sleep(1 / self.steps)
 
             # Only apply final values if the animation wasn't manually stopped
             if not self.manually_stopped:
                 # Ensure final values are set directly at the end
-                for attr, value in self.target_values.items():
-                    # Handle special attributes like x and y that need special handling
-                    if attr == "x":
-                        self.widget._position[0] = value
-                    elif attr == "y":
-                        self.widget._position[1] = value
-                    else:
-                        setattr(self.widget, attr, value)
+                def _apply_final_values():
+                    for attr, value in self.target_values.items():
+                        # Handle special attributes like x and y that need special handling
+                        if attr == "x":
+                            self.widget._position[0] = value
+                        elif attr == "y":
+                            self.widget._position[1] = value
+                        else:
+                            setattr(self.widget, attr, value)
 
-                # Force a final visual update
-                if "x" in self.target_values or "y" in self.target_values:
-                    self.widget.place(self.widget.x, self.widget.y)
-                else:
-                    self.widget.update()
+                    # Force a final visual update
+                    if "x" in self.target_values or "y" in self.target_values:
+                        self.widget.place(self.widget.x, self.widget.y)
+                    else:
+                        self.widget.update()
+
+                self._run_on_ui_thread(_apply_final_values)
 
             self.stop()
 
@@ -498,7 +540,7 @@ class AnimationGroup(threading.Thread):
                     if step_start <= step <= step_end:
                         if not animation.running:
                             animation.start()
-                        animation.tick(direction)
+                        animation.tick_on_ui_thread(direction)
                 sleep(1 / self.steps)
 
         if not self.looping:

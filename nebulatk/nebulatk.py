@@ -1,6 +1,7 @@
 import sys
 import threading
 import queue as std_queue
+import logging
 
 # Import python standard packages
 from time import sleep
@@ -48,6 +49,7 @@ else:
 
 
 FileDialog = file_manager.FileDialog
+logger = logging.getLogger(__name__)
 
 
 # Internal window class to implement threading
@@ -119,6 +121,7 @@ class _window_internal(threading.Thread, Component):
         # Initialize rest of variables
         self.running = True
         self._startup_error = None
+        self._startup_event = threading.Event()
         self.closing_command = closing_command
 
         self.defaults = defaults.new()
@@ -129,6 +132,10 @@ class _window_internal(threading.Thread, Component):
         self._ui_queue = std_queue.Queue()
         self._ui_queue_signal_scheduled = False
         self._ui_queue_lock = threading.Lock()
+        self._ui_wait_timeout = 5.0
+        self._closed_event = threading.Event()
+        self._closing_command_called = False
+        self._closing_lock = threading.Lock()
         self._redraw_needed = True
         self._resize_reflow_active = False
         self._resize_reference_window_size = (max(1, int(width)), max(1, int(height)))
@@ -265,6 +272,10 @@ class _window_internal(threading.Thread, Component):
     def _execute_in_window_thread(self, callback, wait=True):
         if self._is_window_thread() or self.root is None:
             return callback()
+        if not self.is_alive():
+            if not wait:
+                return callback()
+            raise RuntimeError("Window thread is not running.")
 
         done = threading.Event()
         result = {"value": None, "error": None}
@@ -273,10 +284,23 @@ class _window_internal(threading.Thread, Component):
 
         if not wait:
             return None
-        done.wait()
+        completed = done.wait(timeout=self._ui_wait_timeout)
+        if not completed:
+            if not self.is_alive():
+                raise RuntimeError("Window thread exited before processing queued work.")
+            raise TimeoutError("Timed out waiting for window thread response.")
         if result["error"] is not None:
             raise result["error"]
         return result["value"]
+
+    def _invoke_closing_command_once(self):
+        if self.closing_command is None:
+            return
+        with self._closing_lock:
+            if self._closing_command_called:
+                return
+            self._closing_command_called = True
+        self.closing_command()
 
     def _signal_ui_queue(self):
         if self.root is None:
@@ -471,10 +495,7 @@ class _window_internal(threading.Thread, Component):
             self.root.after(200, self.root.quit)
 
         # wait up to a second for the thread to finish
-        self.join(timeout=0.1)
-
-        if self.closing_command:
-            self.closing_command()
+        self.join(timeout=1.0)
 
     def destroy(self):
         self.close()
@@ -535,10 +556,8 @@ class _window_internal(threading.Thread, Component):
                 self.close_animations()
                 try:
                     self.root.quit()
-                except Exception as e:
-                    print(f"exception{e}")
-                if self.closing_command is not None:
-                    self.closing_command()
+                except Exception:
+                    logger.exception("Failed to quit native root during close callback.")
 
             # Bind events to our new event handlers
             self.bind("<Button-1>", self.click)
@@ -551,10 +570,16 @@ class _window_internal(threading.Thread, Component):
 
             self.root.after(0, self._drain_ui_queue)
             self._render_tick()
+            self._startup_event.set()
             self.root.mainloop()
         except Exception as exc:
             self._startup_error = exc
             self.running = False
+            self._startup_event.set()
+        finally:
+            self._startup_event.set()
+            self._closed_event.set()
+            self._invoke_closing_command_once()
 
         # schedule a periodic check of `self.running`,
         # so that close() can break us out cleanly.
@@ -623,7 +648,7 @@ class _window_internal(threading.Thread, Component):
             self: Returns self for method chaining
         """
         if _object is not None:
-            return self
+            raise TypeError("_object is not supported for Window.configure().")
 
         if "width" in kwargs or "height" in kwargs:
             self.resize(kwargs.get("width"), kwargs.get("height"))
@@ -744,14 +769,16 @@ def Window(
     # Start window thread
     canvas.start()
 
-    # Wait for window to be created, as it == in a separate thread and not blocking this thread
-    while canvas.root is None and canvas._startup_error is None and canvas.is_alive():
-        sleep(0.1)
+    # Wait for startup completion from the window thread.
+    canvas._startup_event.wait(timeout=10.0)
 
     if canvas._startup_error is not None:
         raise RuntimeError(
             f"Failed to initialize OpenGL window backend: {canvas._startup_error}"
         ) from canvas._startup_error
+
+    if not canvas._startup_event.is_set():
+        raise RuntimeError("Timed out waiting for window startup.")
 
     if canvas.root is None:
         raise RuntimeError("Window thread exited before creating a render window.")

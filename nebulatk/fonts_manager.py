@@ -1,9 +1,12 @@
 import math
 import os
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 from PIL import ImageFont
+
+logger = logging.getLogger(__name__)
 
 # Detect Windows
 ctypes_available = True
@@ -24,7 +27,7 @@ if not ctypes_available:
     try:
         _libfc = cdll.LoadLibrary(libfc_path)
     except OSError as e:
-        print(e)
+        logger.warning("Failed to load fontconfig library: %s", e)
         _libfc = None
     else:
         # initialize Fontconfig
@@ -317,7 +320,7 @@ def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> b
     # — UNIX branch —
     if _libfc is None:
         # Fontconfig library didn't load
-        print("Fontconfig library didn't load")
+        logger.warning("Fontconfig library didn't load")
         return False
 
     # get the current config pointer

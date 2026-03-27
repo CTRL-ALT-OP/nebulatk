@@ -147,3 +147,43 @@ def test_debug_font_resolution_reports_widget_fonts(monkeypatch):
     assert reports[0]["widget_type"] == type(widget).__name__
     assert reports[0]["requested_family"] == "Arial"
 
+
+def test_execute_in_window_thread_fails_fast_when_thread_dead():
+    window = _window_internal(width=200, height=100)
+    window.root = MagicMock()
+    window._window_thread_id = -1
+    window.is_alive = MagicMock(return_value=False)
+
+    with pytest.raises(RuntimeError, match="not running"):
+        window._execute_in_window_thread(lambda: None)
+
+
+def test_execute_in_window_thread_times_out_when_queue_not_processed():
+    window = _window_internal(width=200, height=100)
+    window.root = MagicMock()
+    window.root.after = MagicMock(return_value=None)
+    window._window_thread_id = -1
+    window._ui_wait_timeout = 0.01
+    window.is_alive = MagicMock(return_value=True)
+
+    with pytest.raises(TimeoutError, match="Timed out"):
+        window._execute_in_window_thread(lambda: None)
+
+
+def test_configure_rejects_legacy_object_argument():
+    window = _window_internal(width=200, height=100)
+    with pytest.raises(TypeError, match="_object is not supported"):
+        window.configure(object(), title="No-op")
+
+
+def test_closing_command_invoked_once():
+    calls = []
+    window = _window_internal(
+        width=200,
+        height=100,
+        closing_command=lambda: calls.append("closed"),
+    )
+    window._invoke_closing_command_once()
+    window._invoke_closing_command_once()
+    assert calls == ["closed"]
+
