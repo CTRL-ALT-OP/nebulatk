@@ -58,6 +58,31 @@ def _glfw_key_name(key):
     return name if name is not None else ""
 
 
+def _is_text_input_char(value):
+    if not isinstance(value, str) or len(value) != 1:
+        return False
+    if value in ("\n", "\r", "\t"):
+        return False
+    return value.isprintable()
+
+
+def _uses_text_shortcut_modifiers(mods):
+    if glfw is None:
+        return False
+    modifier_mask = 0
+    for attr in ("MOD_CONTROL", "MOD_ALT", "MOD_SUPER"):
+        if hasattr(glfw, attr):
+            modifier_mask |= getattr(glfw, attr)
+    return bool(mods & modifier_mask)
+
+
+def _should_dispatch_keypress_event(keysym, char, mods):
+    if _uses_text_shortcut_modifiers(mods):
+        return True
+    candidate = char or keysym
+    return not _is_text_input_char(candidate)
+
+
 def _to_rgba(color):
     if color is None:
         return None
@@ -142,6 +167,17 @@ class PILImageRenderer:
             )
         return _to_rgba(self._safe_attr(widget, "text_color", None))
 
+    def resolve_widget_font_debug(self, widget):
+        """Return renderer-relevant font diagnostics for a text widget."""
+        text = self._safe_attr(widget, "text", "")
+        font_spec = self._safe_attr(widget, "font", None)
+        if text in ("", None) or font_spec is None:
+            return None
+        info = fonts_manager.get_font_debug_info(font_spec)
+        info["text_preview"] = str(text)[:40]
+        info["text_length"] = len(str(text))
+        return info
+
     def _draw_widget(self, frame, widget, parent_x, parent_y, parent_visible=True):
         visible = (
             parent_visible
@@ -183,10 +219,13 @@ class PILImageRenderer:
         font_spec = self._safe_attr(widget, "font", None)
         if text not in ("", None) and font_spec is not None:
             try:
+                font_style = font_spec[2] if len(font_spec) > 2 else "normal"
                 font_size = max(1, int(font_spec[1]))
-                text_font = fonts_manager._load_font(str(font_spec[0]), font_size)
+                text_font = fonts_manager._load_font(
+                    str(font_spec[0]), font_size, str(font_style)
+                )
             except Exception:
-                text_font = fonts_manager._load_font("arial", 12)
+                text_font = fonts_manager._load_font("arial", 12, "normal")
             justify = self._safe_attr(widget, "justify", "center")
             if justify == "left":
                 text_x = abs_x
@@ -445,8 +484,16 @@ class NativeGLWindow:
             self._dispatch("<ButtonRelease-1>", event)
 
     def _on_char(self, _window, codepoint):
-        # Character callback is kept for future direct text handling.
-        self._clipboard_fallback = self._clipboard_fallback
+        try:
+            char = chr(int(codepoint))
+        except (TypeError, ValueError):
+            return
+        if not _is_text_input_char(char):
+            return
+        keysym = char.lower() if char.isalpha() else char
+        with self._event_lock:
+            event = NativeEvent(x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char)
+        self._dispatch("<Key>", event)
 
     def _key_name(self, key):
         return _glfw_key_name(key)
@@ -457,7 +504,8 @@ class NativeGLWindow:
         with self._event_lock:
             event = NativeEvent(x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char)
         if action in (glfw.PRESS, glfw.REPEAT):
-            self._dispatch("<Key>", event)
+            if _should_dispatch_keypress_event(keysym, char, _mods):
+                self._dispatch("<Key>", event)
         elif action == glfw.RELEASE:
             self._dispatch("<KeyRelease>", event)
 
@@ -731,15 +779,27 @@ def _native_window_process_main(
             keysym = _native_window_process_key_name(key)
             char = glfw.get_key_name(key, scancode) or ""
             if action in (glfw.PRESS, glfw.REPEAT):
-                send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
+                if _should_dispatch_keypress_event(keysym, char, _mods):
+                    send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
             elif action == glfw.RELEASE:
                 send_event("<KeyRelease>", mouse_state["x"], mouse_state["y"], keysym, char)
+
+        def on_char(_window, codepoint):
+            try:
+                char = chr(int(codepoint))
+            except (TypeError, ValueError):
+                return
+            if not _is_text_input_char(char):
+                return
+            keysym = char.lower() if char.isalpha() else char
+            send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
 
         glfw.set_window_close_callback(window, on_close_requested)
         glfw.set_cursor_pos_callback(window, on_cursor_pos)
         glfw.set_cursor_enter_callback(window, on_cursor_enter)
         glfw.set_mouse_button_callback(window, on_mouse_button)
         glfw.set_key_callback(window, on_key)
+        glfw.set_char_callback(window, on_char)
 
         hwnd = glfw.get_win32_window(window) if hasattr(glfw, "get_win32_window") else 0
         event_queue.put({"type": "ready", "window_id": window_id, "hwnd": int(hwnd or 0)})

@@ -1,6 +1,8 @@
 import os
 import sys
+import threading
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from PIL import Image as PILImage
 
@@ -26,10 +28,16 @@ class _FakeGlfw:
     KEY_RIGHT_SUPER = 347
     KEY_A = 65
     KEY_Z = 90
+    PRESS = 1
+    REPEAT = 2
+    RELEASE = 0
+    MOD_CONTROL = 0x0002
+    MOD_ALT = 0x0004
+    MOD_SUPER = 0x0008
 
     @staticmethod
     def get_key_name(key, _scancode):
-        return {321: "kp_1"}.get(key)
+        return {321: "kp_1", _FakeGlfw.KEY_A: "a"}.get(key)
 
 
 def test_key_name_helpers_match(monkeypatch):
@@ -39,6 +47,51 @@ def test_key_name_helpers_match(monkeypatch):
         assert rendering._native_window_process_key_name(key) == rendering.NativeGLWindow._key_name(
             object(), key
         )
+
+
+def test_should_dispatch_keypress_event_uses_char_callback_for_plain_text(monkeypatch):
+    monkeypatch.setattr(rendering, "glfw", _FakeGlfw)
+
+    assert rendering._should_dispatch_keypress_event("a", "a", 0) is False
+    assert rendering._should_dispatch_keypress_event("A", "a", 0) is False
+    assert rendering._should_dispatch_keypress_event("a", "a", _FakeGlfw.MOD_CONTROL) is True
+    assert rendering._should_dispatch_keypress_event("BackSpace", "", 0) is True
+
+
+def test_on_key_skips_plain_text_without_modifiers(monkeypatch):
+    monkeypatch.setattr(rendering, "glfw", _FakeGlfw)
+    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window._event_lock = threading.Lock()
+    window._mouse_x = 10
+    window._mouse_y = 20
+    window._dispatch = MagicMock()
+    window._key_name = lambda _key: "a"
+
+    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.PRESS, 0)
+    window._dispatch.assert_not_called()
+
+    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.PRESS, _FakeGlfw.MOD_CONTROL)
+    window._dispatch.assert_called_once()
+
+    window._dispatch.reset_mock()
+    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.RELEASE, 0)
+    window._dispatch.assert_called_once()
+    assert window._dispatch.call_args[0][0] == "<KeyRelease>"
+
+
+def test_on_char_dispatches_text_event():
+    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window._event_lock = threading.Lock()
+    window._mouse_x = 1
+    window._mouse_y = 2
+    window._dispatch = MagicMock()
+
+    window._on_char(None, ord("A"))
+    window._dispatch.assert_called_once()
+    event = window._dispatch.call_args[0][1]
+    assert window._dispatch.call_args[0][0] == "<Key>"
+    assert event.keysym == "a"
+    assert event.char == "A"
 
 
 def test_opengl_image_display_proxy_show_frame_submits_bytes():

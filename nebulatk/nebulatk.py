@@ -321,6 +321,46 @@ class _window_internal(threading.Thread, Component):
             if nested_children:
                 yield from self._iter_widgets(nested_children)
 
+    def debug_font_resolution(self, widget=None, print_report=True):
+        """Inspect runtime font resolution used by the renderer."""
+        widgets = [widget] if widget is not None else list(self._iter_widgets())
+        reports = []
+
+        for current in widgets:
+            text = getattr(current, "text", "")
+            font_spec = getattr(current, "font", None)
+            if text in ("", None) or font_spec is None:
+                continue
+
+            if self.renderer is not None and hasattr(
+                self.renderer, "resolve_widget_font_debug"
+            ):
+                info = self.renderer.resolve_widget_font_debug(current)
+            else:
+                info = fonts_manager.get_font_debug_info(font_spec)
+
+            if info is None:
+                continue
+
+            info = dict(info)
+            info["widget_type"] = type(current).__name__
+            reports.append(info)
+
+        if print_report:
+            for item in reports:
+                print(
+                    "[font-debug]"
+                    f" widget={item['widget_type']}"
+                    f" family={item['requested_family']}"
+                    f" style={item['requested_style']}"
+                    f" size={item['requested_size']}"
+                    f" selected={item['selected_candidate']}"
+                    f" loaded_path={item['loaded_font_path']}"
+                    f" default_fallback={item['used_default_font']}"
+                )
+
+        return reports
+
     def _ensure_resize_baseline(self, widget, force=False):
         if not getattr(widget, "resize", False):
             return
@@ -382,8 +422,10 @@ class _window_internal(threading.Thread, Component):
                     and hasattr(widget, "_images")
                     and widget._images.get("image") is not None
                 ):
-                    widget.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
-                        widget._images["image"].image
+                    widget.bounds = (
+                        bounds_manager.generate_bounds_for_nonstandard_image(
+                            widget._images["image"].image
+                        )
                     )
                 widget._update_children()
         finally:
@@ -404,7 +446,9 @@ class _window_internal(threading.Thread, Component):
     def _sync_window_size_from_native(self):
         if self.root is None:
             return
-        if not hasattr(self.root, "winfo_width") or not hasattr(self.root, "winfo_height"):
+        if not hasattr(self.root, "winfo_width") or not hasattr(
+            self.root, "winfo_height"
+        ):
             return
         width = int(self.root.winfo_width() or 0)
         height = int(self.root.winfo_height() or 0)
@@ -598,7 +642,9 @@ class _window_internal(threading.Thread, Component):
                     lambda: self.root.resizable(self.resizable[0], self.resizable[1])
                 )
 
-        background_color = kwargs.get("background_color", kwargs.get("background-color"))
+        background_color = kwargs.get(
+            "background_color", kwargs.get("background-color")
+        )
         if background_color is not None:
             self.background_color = self._normalize_background_color(background_color)
             if self.background is not None:
@@ -840,7 +886,7 @@ def __main__():
     Entry(
         canvas,
         text="hi",
-        font=("Helvetica", 50),
+        font=("Comic Sans MS", 50),
         fill=[255, 67, 67, 45],
         border_width=2,
     ).place(0, 400).place(200, 400)
@@ -879,6 +925,7 @@ def __main__():
         active_hover_image="examples/Images/main_button_active2.png",
         command=lambda: print("clicked", btn6.width),
     )
+    canvas.debug_font_resolution()
     btn6.place(0, 0)
     sleep(2)
     print("resizing window")
@@ -895,6 +942,7 @@ def __main__():
     window.destroy()
     canvas.destroy()
     # window = Window()
+
 
 if __name__ == "__main__":
     __main__()

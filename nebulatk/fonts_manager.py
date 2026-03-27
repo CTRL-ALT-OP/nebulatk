@@ -1,5 +1,7 @@
 import math
+import os
 from functools import lru_cache
+from pathlib import Path
 
 from PIL import ImageFont
 
@@ -63,11 +65,132 @@ def _normalize_font(font):
     return font
 
 
-@lru_cache(maxsize=256)
-def _load_font(family, size):
-    size = max(1, int(size))
+def _normalize_font_token(value):
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _normalize_font_style(style):
+    token = _normalize_font_token(style)
+    return token or "normal"
+
+
+def _style_tokens_from_name(display_name):
+    token = _normalize_font_token(display_name)
+    style_tokens = set()
+    for marker in ("bold", "italic", "oblique", "black", "light", "medium", "semibold"):
+        if marker in token:
+            style_tokens.add(marker)
+    return style_tokens
+
+
+@lru_cache(maxsize=1)
+def _windows_font_catalog():
+    if os.name != "nt":
+        return ()
+    fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+    rows = []
+
+    # Prefer registry metadata because filenames often do not match family names.
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+        ) as key:
+            index = 0
+            while True:
+                try:
+                    display_name, file_name, _ = winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                index += 1
+
+                if not isinstance(file_name, str):
+                    continue
+                file_lower = file_name.lower()
+                if not file_lower.endswith((".ttf", ".otf", ".ttc")):
+                    continue
+                file_path = (
+                    str(fonts_dir / file_name) if not os.path.isabs(file_name) else file_name
+                )
+                base_name = display_name.split("(", 1)[0].strip()
+                rows.append(
+                    {
+                        "family_token": _normalize_font_token(base_name),
+                        "style_tokens": _style_tokens_from_name(display_name),
+                        "path": file_path,
+                    }
+                )
+    except Exception:
+        rows = []
+
+    if rows:
+        return tuple(rows)
+
+    # Fallback: filename-based scan for environments where registry is unavailable.
+    if not fonts_dir.exists():
+        return ()
+    try:
+        for entry in fonts_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.suffix.lower() not in (".ttf", ".otf", ".ttc"):
+                continue
+            rows.append(
+                {
+                    "family_token": _normalize_font_token(entry.stem),
+                    "style_tokens": _style_tokens_from_name(entry.stem),
+                    "path": str(entry),
+                }
+            )
+    except Exception:
+        return ()
+    return tuple(rows)
+
+
+def _resolve_windows_font_path(family, style):
+    catalog = _windows_font_catalog()
+    family_token = _normalize_font_token(family)
+    if not family_token or not catalog:
+        return None
+
+    matches = [
+        row
+        for row in catalog
+        if row["family_token"] == family_token or family_token in row["family_token"]
+    ]
+    if not matches:
+        return None
+
+    style_token = _normalize_font_style(style)
+
+    if style_token != "normal":
+        style_matches = [
+            row["path"] for row in matches if style_token in row.get("style_tokens", set())
+        ]
+        if style_matches:
+            return style_matches[0]
+
+    regular = []
+    stylized = []
+    for row in matches:
+        if row.get("style_tokens"):
+            stylized.append(row["path"])
+        else:
+            regular.append(row["path"])
+    if regular:
+        return regular[0]
+    return stylized[0] if stylized else None
+
+
+def _font_candidates(family, style):
     candidates = [family]
+    resolved_path = None
     if not family.lower().endswith((".ttf", ".otf", ".ttc")):
+        resolved_path = _resolve_windows_font_path(family, style)
+        if resolved_path is not None:
+            candidates.insert(0, resolved_path)
         candidates.extend(
             [
                 f"{family}.ttf",
@@ -76,12 +199,57 @@ def _load_font(family, size):
                 "DejaVuSans.ttf",
             ]
         )
+    return candidates, resolved_path
+
+
+@lru_cache(maxsize=256)
+def _load_font(family, size, style="normal"):
+    size = max(1, int(size))
+    candidates, _ = _font_candidates(family, style)
     for candidate in candidates:
         try:
             return ImageFont.truetype(candidate, size)
         except Exception:
             continue
     return ImageFont.load_default()
+
+
+def get_font_debug_info(font):
+    """Return detailed diagnostics for a font tuple used by rendering."""
+    font = _normalize_font(font)
+    family = str(font[0])
+    size = max(1, int(font[1]))
+    style = str(font[2])
+    normalized_style = _normalize_font_style(style)
+    candidates, windows_resolved_path = _font_candidates(family, normalized_style)
+
+    selected_candidate = None
+    used_default_font = False
+    try:
+        for candidate in candidates:
+            try:
+                loaded_font = ImageFont.truetype(candidate, size)
+                selected_candidate = candidate
+                break
+            except Exception:
+                continue
+        if selected_candidate is None:
+            loaded_font = ImageFont.load_default()
+            used_default_font = True
+    except Exception:
+        loaded_font = ImageFont.load_default()
+        used_default_font = True
+
+    return {
+        "requested_family": family,
+        "requested_size": size,
+        "requested_style": normalized_style,
+        "windows_resolved_path": windows_resolved_path,
+        "candidate_chain": candidates,
+        "selected_candidate": selected_candidate,
+        "loaded_font_path": getattr(loaded_font, "path", None),
+        "used_default_font": used_default_font,
+    }
 
 
 def measure_text(root, font, text):
@@ -96,7 +264,7 @@ def measure_text(root, font, text):
         int: The width of the text in pixels
     """
     font = _normalize_font(font)
-    pil_font = _load_font(font[0], font[1])
+    pil_font = _load_font(font[0], font[1], font[2])
     if not text:
         return 0
     left, _, right, _ = pil_font.getbbox(text)
@@ -115,7 +283,7 @@ def get_font_metrics(root, font, attr):
         int: The value of the requested font metric
     """
     font = _normalize_font(font)
-    pil_font = _load_font(font[0], font[1])
+    pil_font = _load_font(font[0], font[1], font[2])
     ascent, descent = pil_font.getmetrics()
     metrics = {
         "ascent": int(ascent),

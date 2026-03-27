@@ -117,3 +117,33 @@ def test_resize_updates_renderer_and_canvas_dimensions():
     assert window.canvas_height == 700
     window.renderer.request_redraw.assert_called()
 
+
+def test_debug_font_resolution_reports_widget_fonts(monkeypatch):
+    window = _window_internal(width=800, height=600)
+    widget = MagicMock()
+    widget.children = []
+    widget.text = "Hello world"
+    widget.font = ("Arial", 12, "normal")
+    window.children = [widget]
+    window.renderer = None
+
+    fake_report = {
+        "requested_family": "Arial",
+        "requested_size": 12,
+        "requested_style": "normal",
+        "windows_resolved_path": None,
+        "candidate_chain": ["arial.ttf"],
+        "selected_candidate": "arial.ttf",
+        "loaded_font_path": r"C:\Windows\Fonts\arial.ttf",
+        "used_default_font": False,
+    }
+
+    import fonts_manager
+
+    monkeypatch.setattr(fonts_manager, "get_font_debug_info", lambda _font: fake_report)
+    reports = window.debug_font_resolution(print_report=False)
+
+    assert len(reports) == 1
+    assert reports[0]["widget_type"] == type(widget).__name__
+    assert reports[0]["requested_family"] == "Arial"
+
