@@ -66,6 +66,7 @@ class _window_internal(threading.Thread, Component):
         override=False,
         render_mode="image_gl",
         fps=60,
+        background_color="FFFFFF",
     ):
         # Initialize the thread
         super().__init__()
@@ -129,6 +130,10 @@ class _window_internal(threading.Thread, Component):
         self._ui_queue_signal_scheduled = False
         self._ui_queue_lock = threading.Lock()
         self._redraw_needed = True
+        self._resize_reflow_active = False
+        self._resize_reference_window_size = (max(1, int(width)), max(1, int(height)))
+        self.background_color = self._normalize_background_color(background_color)
+        self.background = None
 
     @property
     def taskbar_manager(self):
@@ -143,6 +148,16 @@ class _window_internal(threading.Thread, Component):
     @taskbar_manager.setter
     def taskbar_manager(self, value):
         return "Cannot set taskbar_manager"
+
+    def _normalize_background_color(self, color):
+        if color is None:
+            return "#FFFFFF"
+        value = str(color).strip()
+        if value == "":
+            return "#FFFFFF"
+        if not value.startswith("#"):
+            value = f"#{value}"
+        return value
 
     # NOTE: EVENT HANDLERS
 
@@ -328,6 +343,106 @@ class _window_internal(threading.Thread, Component):
     def request_redraw(self):
         self._execute_in_window_thread(self._mark_redraw_needed, wait=False)
 
+    def _iter_widgets(self, children=None):
+        if children is None:
+            children = self.children
+        for child in children:
+            yield child
+            nested_children = getattr(child, "children", [])
+            if nested_children:
+                yield from self._iter_widgets(nested_children)
+
+    def _ensure_resize_baseline(self, widget, force=False):
+        if not getattr(widget, "resize", False):
+            return
+        if force or not hasattr(widget, "_resize_reference"):
+            widget._resize_reference = {
+                "window_size": (max(1, int(self.width)), max(1, int(self.height))),
+                "x": int(getattr(widget, "x", 0) or 0),
+                "y": int(getattr(widget, "y", 0) or 0),
+                "width": int(getattr(widget, "width", 0) or 0),
+                "height": int(getattr(widget, "height", 0) or 0),
+            }
+
+    def _configure_surface_size(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        self.canvas_width = width
+        self.canvas_height = height
+        if self.renderer is not None:
+            self.renderer.width = width
+            self.renderer.height = height
+            if hasattr(self.renderer, "request_redraw"):
+                self.renderer.request_redraw()
+        if self.display is not None and hasattr(self.display, "configure"):
+            self.display.configure(width=width, height=height)
+
+    def _apply_resizable_widgets(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        if self._resize_reflow_active:
+            return
+        self._resize_reflow_active = True
+        if hasattr(self, "begin_render_batch"):
+            self.begin_render_batch()
+        try:
+            for widget in self._iter_widgets():
+                if not getattr(widget, "resize", False):
+                    continue
+                self._ensure_resize_baseline(widget)
+                reference = getattr(widget, "_resize_reference", None)
+                if reference is None:
+                    continue
+
+                ref_window_width, ref_window_height = reference["window_size"]
+                scale_x = width / max(1, int(ref_window_width))
+                scale_y = height / max(1, int(ref_window_height))
+
+                widget._position = [
+                    int(round(reference["x"] * scale_x)),
+                    int(round(reference["y"] * scale_y)),
+                ]
+                widget._size = [
+                    max(0, int(round(reference["width"] * scale_x))),
+                    max(0, int(round(reference["height"] * scale_y))),
+                ]
+                if hasattr(widget, "_resize_widget_images"):
+                    widget._resize_widget_images()
+                if (
+                    getattr(widget, "bounds_type", None) == "non-standard"
+                    and hasattr(widget, "_images")
+                    and widget._images.get("image") is not None
+                ):
+                    widget.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
+                        widget._images["image"].image
+                    )
+                widget._update_children()
+        finally:
+            if hasattr(self, "end_render_batch"):
+                self.end_render_batch()
+            self._resize_reflow_active = False
+
+    def _sync_resize_state(self, width, height):
+        width = max(1, int(width))
+        height = max(1, int(height))
+        if width == self.width and height == self.height:
+            return
+        self._size = [width, height]
+        self._configure_surface_size(width, height)
+        self._apply_resizable_widgets(width, height)
+        self._mark_redraw_needed()
+
+    def _sync_window_size_from_native(self):
+        if self.root is None:
+            return
+        if not hasattr(self.root, "winfo_width") or not hasattr(self.root, "winfo_height"):
+            return
+        width = int(self.root.winfo_width() or 0)
+        height = int(self.root.winfo_height() or 0)
+        if width <= 0 or height <= 0:
+            return
+        self._sync_resize_state(width, height)
+
     # NOTE: Other methods
 
     # Handle window closing
@@ -448,17 +563,13 @@ class _window_internal(threading.Thread, Component):
         Returns:
             self: Returns self for method chaining
         """
-        if width is not None:
-            self._size[0] = int(width)
-        if height is not None:
-            self._size[1] = int(height)
+        target_width = self.width if width is None else int(width)
+        target_height = self.height if height is None else int(height)
 
         def _apply_resize():
             # Update the window geometry
-            self.root.geometry(f"{self.width}x{self.height}")
-            # Keep renderer/canvas dimensions fixed so window resize does not
-            # scale existing content.
-            self._mark_redraw_needed()
+            self.root.geometry(f"{target_width}x{target_height}")
+            self._sync_resize_state(target_width, target_height)
 
         self._execute_in_window_thread(_apply_resize)
 
@@ -524,6 +635,12 @@ class _window_internal(threading.Thread, Component):
                     lambda: self.root.resizable(self.resizable[0], self.resizable[1])
                 )
 
+        background_color = kwargs.get("background_color", kwargs.get("background-color"))
+        if background_color is not None:
+            self.background_color = self._normalize_background_color(background_color)
+            if self.background is not None:
+                self.background.fill = self.background_color
+
         self.request_redraw()
 
         return self
@@ -536,6 +653,7 @@ class _window_internal(threading.Thread, Component):
     def _render_tick(self):
         if self.renderer is None or self.root is None:
             return
+        self._sync_window_size_from_native()
         if self._render_batch_depth > 0:
             self.root.after(max(1, int(1000 / max(1, self.fps))), self._render_tick)
             return
@@ -563,6 +681,8 @@ def Window(
     override=False,
     render_mode="image_gl",
     fps=60,
+    background_color="FFFFFF",
+    **kwargs,
 ):
     """Window constructor
 
@@ -574,6 +694,7 @@ def Window(
         canvas_height (str, optional): Canvas height. Defaults to height.
         closing_command (function, optional): Command to execute on close. Defaults to sys.exit.
         resizable (iterable or boolean, optional): Controls whether the window is resizable on the X axis, then Y axis
+        background_color (str, optional): Window background color. Defaults to FFFFFF.
 
     Returns:
         _type_: _description_
@@ -582,6 +703,11 @@ def Window(
 
     if type(resizable) is bool:
         resizable = (resizable, resizable)
+
+    if "background-color" in kwargs:
+        background_color = kwargs.pop("background-color")
+    if kwargs:
+        raise TypeError(f"Unexpected Window arguments: {', '.join(kwargs.keys())}")
 
     if render_mode != "image_gl":
         raise ValueError(
@@ -603,6 +729,7 @@ def Window(
         override,
         render_mode,
         fps,
+        background_color,
     )
 
     # Start window thread
@@ -619,6 +746,20 @@ def Window(
 
     if canvas.root is None:
         raise RuntimeError("Window thread exited before creating a render window.")
+
+    background = Frame(
+        canvas,
+        width=canvas.width,
+        height=canvas.height,
+        fill=canvas.background_color,
+        border=None,
+        border_width=0,
+    ).place(0, 0)
+    background.resize = True
+    background.can_focus = False
+    background.can_click = False
+    canvas.background = background
+    canvas._ensure_resize_baseline(background, force=True)
 
     # Return the window
     return canvas

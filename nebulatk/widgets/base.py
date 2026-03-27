@@ -171,6 +171,12 @@ class _widget_properties:
                 self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
                     self._images["image"].image
                 )
+            if (
+                self.resize
+                and hasattr(self.master, "_ensure_resize_baseline")
+                and not getattr(self.master, "_resize_reflow_active", False)
+            ):
+                self.master._ensure_resize_baseline(self, force=True)
             if self.master.updates_all:
                 self._configure_size(self._size)
 
@@ -189,6 +195,12 @@ class _widget_properties:
                 self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
                     self._images["image"].image
                 )
+            if (
+                self.resize
+                and hasattr(self.master, "_ensure_resize_baseline")
+                and not getattr(self.master, "_resize_reflow_active", False)
+            ):
+                self.master._ensure_resize_baseline(self, force=True)
             if self.master.updates_all:
                 self._configure_size(self._size)
 
@@ -224,6 +236,20 @@ class _widget_properties:
 
         if self.initialized and self.master.updates_all:
             self.update()
+
+    @property
+    def resize(self):
+        return self._resize
+
+    @resize.setter
+    def resize(self, value):
+        self._resize = bool(value)
+        if (
+            self.initialized
+            and self._resize
+            and hasattr(self.master, "_ensure_resize_baseline")
+        ):
+            self.master._ensure_resize_baseline(self, force=True)
 
     @property
     def text(self):
@@ -511,6 +537,7 @@ class _widget(_widget_properties, Component):
         # Trigger Variables
         mode: str = "standard",
         state: bool = False,
+        resize: bool = False,
     ):
         super().__init__()
         self.__initialize_general(root, width, height, orientation)
@@ -531,6 +558,8 @@ class _widget(_widget_properties, Component):
         self.__initialize_trigger(mode, state)
 
         self.initialized = True
+
+        self.resize = resize
 
         self.can_focus = True
 
@@ -560,6 +589,7 @@ class _widget(_widget_properties, Component):
         self._active_image_slot = "image_object"
         self._active_bg_slot = "bg_object"
         self._active_text_slot = "text_object"
+        self._resize = False
 
         self._root = None
         self.root = root
@@ -874,6 +904,12 @@ class _widget(_widget_properties, Component):
             self.master.begin_render_batch()
         try:
             self._position = [x, y]
+            if (
+                self.resize
+                and hasattr(self.master, "_ensure_resize_baseline")
+                and not getattr(self.master, "_resize_reflow_active", False)
+            ):
+                self.master._ensure_resize_baseline(self, force=True)
 
             self._update_children()
 
@@ -914,6 +950,12 @@ class _widget(_widget_properties, Component):
             self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
                 self._images["image"].image
             )
+        if (
+            self.resize
+            and hasattr(self.master, "_ensure_resize_baseline")
+            and not getattr(self.master, "_resize_reflow_active", False)
+        ):
+            self.master._ensure_resize_baseline(self, force=True)
         self.update()
 
     def _configure_text(self, text):
@@ -921,6 +963,12 @@ class _widget(_widget_properties, Component):
 
     def _configure_position(self, position):
         self._position = [int(position[0]), int(position[1])]
+        if (
+            self.resize
+            and hasattr(self.master, "_ensure_resize_baseline")
+            and not getattr(self.master, "_resize_reflow_active", False)
+        ):
+            self.master._ensure_resize_baseline(self, force=True)
         self._request_redraw()
 
     # Default configure behavior

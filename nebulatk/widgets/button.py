@@ -49,6 +49,7 @@ class Button(_widget):
         # Trigger Variables
         mode: str = "standard",
         state: bool = False,
+        resize: bool = False,
     ):
         super().__init__(
             root,
@@ -77,6 +78,7 @@ class Button(_widget):
             dragging_command,
             mode,
             state,
+            resize,
         )
         self.can_hover = True
         self.can_click = True

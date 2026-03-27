@@ -582,6 +582,22 @@ class NativeGLWindow:
             return 0
         return int(self._hwnd or 0)
 
+    def winfo_width(self):
+        if self._window is None:
+            return 0
+        size = self._send_native_command({"op": "get_size"}, expect_response=True, timeout=1.0)
+        if not size:
+            return 0
+        return int(size.get("width", 0))
+
+    def winfo_height(self):
+        if self._window is None:
+            return 0
+        size = self._send_native_command({"op": "get_size"}, expect_response=True, timeout=1.0)
+        if not size:
+            return 0
+        return int(size.get("height", 0))
+
     def submit_frame(self, frame_rgba, width, height):
         if self._window is None:
             return
@@ -812,6 +828,19 @@ def _native_window_process_main(
                             "window_id": window_id,
                             "request_id": request_id,
                             "value": value,
+                        }
+                    )
+                elif op == "get_size":
+                    width_now, height_now = glfw.get_window_size(window)
+                    response_queue.put(
+                        {
+                            "type": "response",
+                            "window_id": window_id,
+                            "request_id": request_id,
+                            "value": {
+                                "width": int(width_now),
+                                "height": int(height_now),
+                            },
                         }
                     )
 
