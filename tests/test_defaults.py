@@ -199,6 +199,32 @@ def test_default_font_reflows_on_resize_until_explicit_override(light_defaults_p
         window.close()
 
 
+def test_default_font_reflows_on_text_change(light_defaults_path: str):
+    window = ntk.Window(
+        title="Font Text Reflow",
+        width=520,
+        height=320,
+        render_mode="image_gl",
+        fps=30,
+        defaults_file=light_defaults_path,
+    )
+    try:
+        button = ntk.Button(
+            window,
+            text="Short",
+            font="default",
+            width=180,
+            height=40,
+        ).place(10, 10)
+
+        size_before = button.font[1]
+        button.text = "A much longer text string that should force a smaller auto font"
+        size_after = button.font[1]
+        assert size_after < size_before
+    finally:
+        window.close()
+
+
 def test_image_widgets_default_background_is_transparent(
     light_defaults_path: str, tmp_path
 ):

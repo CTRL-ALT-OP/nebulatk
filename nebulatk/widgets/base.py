@@ -444,7 +444,7 @@ class _widget_properties:
         self._set_binding_state("text", None)
         self._text = text
 
-        if self.initialized and self.master.updates_all:
+        if self.initialized:
             self._configure_text(self._text)
 
     @property
