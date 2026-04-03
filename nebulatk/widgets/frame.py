@@ -23,6 +23,7 @@ class Frame(_widget):
         border_width=1,
         bounds_type="box",
         resize=False,
+        style=None,
     ):
         """_summary_
 
@@ -46,6 +47,7 @@ class Frame(_widget):
             border_width=border_width,
             bounds_type=bounds_type,
             resize=resize,
+            style=style,
         )
         self.can_hover = False
         self.can_click = False

@@ -34,6 +34,7 @@ class Entry(_widget):
         image=None,
         bounds_type="default",
         resize=False,
+        style=None,
     ):
         """_summary_
 
@@ -64,6 +65,7 @@ class Entry(_widget):
             image=image,
             bounds_type=bounds_type,
             resize=resize,
+            style=style,
         )
         self.can_hover = False
         self.can_click = False

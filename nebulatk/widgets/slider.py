@@ -53,6 +53,7 @@ class Slider(_widget):
         slider_bounds_type: str = "default",
         slider_custom_bounds: list = None,
         resize: bool = False,
+        style=None,
     ):
         """Slider widget
 
@@ -107,6 +108,7 @@ class Slider(_widget):
             border_width=border_width,
             bounds_type=bounds_type,
             resize=resize,
+            style=style,
         )
         self.can_hover = False
         self.can_click = False

@@ -68,7 +68,8 @@ class _window_internal(threading.Thread, Component):
         override=False,
         render_mode="image_gl",
         fps=60,
-        background_color="FFFFFF",
+        background_color="default",
+        defaults_file=None,
     ):
         # Initialize the thread
         super().__init__()
@@ -125,7 +126,11 @@ class _window_internal(threading.Thread, Component):
         self._startup_event = threading.Event()
         self.closing_command = closing_command
 
-        self.defaults = defaults.new()
+        self.defaults = defaults.new(defaults_file)
+        self._background_color_bound_to_defaults = background_color in {
+            "default",
+            None,
+        }
 
         self._taskbar_manager = None
         self._render_batch_depth = 0
@@ -140,8 +145,23 @@ class _window_internal(threading.Thread, Component):
         self._redraw_needed = True
         self._resize_reflow_active = False
         self._resize_reference_window_size = (max(1, int(width)), max(1, int(height)))
+        if self._background_color_bound_to_defaults:
+            background_color = self.defaults.get_default("default_window_background")
         self.background_color = self._normalize_background_color(background_color)
         self.background = None
+
+    def set_defaults(self, file_or_module):
+        self.defaults.switch(file_or_module)
+        if self._background_color_bound_to_defaults:
+            self._apply_default_window_background()
+        self.request_redraw()
+        return self
+
+    def _apply_default_window_background(self):
+        background_color = self.defaults.get_default("default_window_background")
+        self.background_color = self._normalize_background_color(background_color)
+        if self.background is not None:
+            self.background.fill = self.background_color
 
     @property
     def taskbar_manager(self):
@@ -694,9 +714,14 @@ class _window_internal(threading.Thread, Component):
             "background_color", kwargs.get("background-color")
         )
         if background_color is not None:
-            self.background_color = self._normalize_background_color(background_color)
-            if self.background is not None:
-                self.background.fill = self.background_color
+            if background_color == "default":
+                self._background_color_bound_to_defaults = True
+                self._apply_default_window_background()
+            else:
+                self._background_color_bound_to_defaults = False
+                self.background_color = self._normalize_background_color(background_color)
+                if self.background is not None:
+                    self.background.fill = self.background_color
 
         self.request_redraw()
 
@@ -738,7 +763,8 @@ def Window(
     override=False,
     render_mode="image_gl",
     fps=60,
-    background_color="FFFFFF",
+    background_color="default",
+    defaults_file=None,
     **kwargs,
 ):
     """Window constructor
@@ -751,7 +777,7 @@ def Window(
         canvas_height (str, optional): Canvas height. Defaults to height.
         closing_command (function, optional): Command to execute on close. Defaults to sys.exit.
         resizable (iterable or boolean, optional): Controls whether the window is resizable on the X axis, then Y axis
-        background_color (str, optional): Window background color. Defaults to FFFFFF.
+        background_color (str, optional): Window background color. Defaults to "default".
 
     Returns:
         _type_: _description_
@@ -763,6 +789,8 @@ def Window(
 
     if "background-color" in kwargs:
         background_color = kwargs.pop("background-color")
+    if "defaults-file" in kwargs:
+        defaults_file = kwargs.pop("defaults-file")
     if kwargs:
         raise TypeError(f"Unexpected Window arguments: {', '.join(kwargs.keys())}")
 
@@ -787,6 +815,7 @@ def Window(
         render_mode,
         fps,
         background_color,
+        defaults_file,
     )
 
     # Start window thread

@@ -50,6 +50,7 @@ class Button(_widget):
         mode: str = "standard",
         state: bool = False,
         resize: bool = False,
+        style=None,
     ):
         super().__init__(
             root,
@@ -79,6 +80,7 @@ class Button(_widget):
             mode,
             state,
             resize,
+            style,
         )
         self.can_hover = True
         self.can_click = True

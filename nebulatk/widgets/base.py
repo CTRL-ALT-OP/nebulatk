@@ -108,6 +108,201 @@ class Component:
 # Initialize base methods for all widgets.
 # This is largely so we don't ever need to initialize methods that will never be used (e.g. hovered on a frame)
 class _widget_properties:
+    _IMAGE_TRANSPARENT_DEFAULT_PROPS = {
+        "fill",
+        "active_fill",
+        "hover_fill",
+        "active_hover_fill",
+        "border",
+    }
+    _STYLE_APPLIABLE_PROPERTIES = {
+        "width",
+        "height",
+        "text",
+        "font",
+        "justify",
+        "text_color",
+        "active_text_color",
+        "fill",
+        "active_fill",
+        "hover_fill",
+        "active_hover_fill",
+        "border",
+        "border_width",
+        "image",
+        "active_image",
+        "hover_image",
+        "active_hover_image",
+        "bounds_type",
+        "resize",
+    }
+    _DEFAULT_PROPERTY_NAMES = {
+        "text_color": "default_text_color",
+        "active_text_color": "default_active_text_color",
+        "fill": "default_fill",
+        "active_fill": "default_active_fill",
+        "hover_fill": "default_hover_fill",
+        "active_hover_fill": "default_active_hover_fill",
+        "border": "default_border",
+        "font": "default_font",
+        "bounds_type": "default_bounds_type",
+    }
+    _REAPPLY_PRIORITY = (
+        "font",
+        "text_color",
+        "active_text_color",
+        "fill",
+        "active_fill",
+        "hover_fill",
+        "active_hover_fill",
+        "border",
+        "border_width",
+        "image",
+        "active_image",
+        "hover_image",
+        "active_hover_image",
+        "bounds_type",
+        "justify",
+        "width",
+        "height",
+        "text",
+        "style",
+    )
+
+    def _resolve_defaults_owner(self):
+        owner = getattr(self, "master", None)
+        return owner.defaults if owner is not None and hasattr(owner, "defaults") else None
+
+    def _resolve_default_value(self, prop_name, value):
+        owner = self._resolve_defaults_owner()
+        if owner is None:
+            return value, None
+
+        if isinstance(value, defaults.DefaultRef):
+            return owner.get_default(value.name), ("default", value.name)
+
+        if (
+            value == "default"
+            and not getattr(self, "_no_image", True)
+            and prop_name in self._IMAGE_TRANSPARENT_DEFAULT_PROPS
+        ):
+            # Image-backed widgets should default to a transparent background.
+            return "default", ("literal_default", prop_name)
+
+        default_name = self._DEFAULT_PROPERTY_NAMES.get(prop_name)
+        if prop_name == "font" and value in (None, "default"):
+            default_name = "default_font"
+        elif value == "default" and default_name is not None:
+            pass
+        else:
+            default_name = None
+
+        if default_name is not None:
+            try:
+                return owner.get_default(default_name), ("default", default_name)
+            except AttributeError:
+                if value == "default":
+                    return value, ("literal_default", prop_name)
+        return value, None
+
+    def _set_binding_state(self, prop_name, binding):
+        if not hasattr(self, "_default_bindings"):
+            self._default_bindings = {}
+        if binding is not None:
+            self._default_bindings[prop_name] = binding
+            if (
+                binding[0] != "style"
+                and hasattr(self, "_pending_style_bindings")
+                and prop_name in self._pending_style_bindings
+            ):
+                self._pending_style_bindings.pop(prop_name, None)
+            return
+
+        if (
+            hasattr(self, "_pending_style_bindings")
+            and prop_name in self._pending_style_bindings
+        ):
+            style_name = self._pending_style_bindings.pop(prop_name)
+            self._default_bindings[prop_name] = ("style", style_name, prop_name)
+            return
+
+        self._default_bindings.pop(prop_name, None)
+
+    def _resolve_style_payload(self, style):
+        if style is None:
+            return None, {}
+        owner = self._resolve_defaults_owner()
+        if owner is None:
+            return None, {}
+
+        if isinstance(style, defaults.StyleRef):
+            style_name = style.name
+        elif isinstance(style, str):
+            style_name = style
+        else:
+            raise TypeError("style must be a string style name or defaults style reference")
+
+        return style_name, owner.resolve_style(style_name)
+
+    def _clear_style_bindings(self):
+        if not hasattr(self, "_default_bindings"):
+            return
+        keys = [
+            prop
+            for prop, binding in self._default_bindings.items()
+            if binding[0] == "style"
+        ]
+        for prop in keys:
+            self._default_bindings.pop(prop, None)
+
+    def _on_defaults_changed(self):
+        if not getattr(self, "initialized", False):
+            return
+        if not hasattr(self, "_default_bindings") or not self._default_bindings:
+            return
+
+        owner = self._resolve_defaults_owner()
+        if owner is None:
+            return
+
+        ordered_props = [
+            name for name in self._REAPPLY_PRIORITY if name in self._default_bindings
+        ]
+        for prop in self._default_bindings:
+            if prop not in ordered_props:
+                ordered_props.append(prop)
+
+        if hasattr(self.master, "begin_render_batch"):
+            self.master.begin_render_batch()
+        try:
+            for prop in ordered_props:
+                binding = self._default_bindings.get(prop)
+                if binding is None:
+                    continue
+                kind = binding[0]
+                if kind == "default":
+                    setattr(self, prop, defaults.DefaultRef(binding[1]))
+                elif kind == "literal_default":
+                    setattr(self, prop, "default")
+                elif kind == "style":
+                    style_name = binding[1]
+                    style_key = binding[2]
+                    try:
+                        style_values = owner.resolve_style(style_name)
+                    except Exception:
+                        self._default_bindings.pop(prop, None)
+                        continue
+                    if style_key not in style_values:
+                        self._default_bindings.pop(prop, None)
+                        continue
+                    self._pending_style_bindings[prop] = style_name
+                    setattr(self, prop, style_values[style_key])
+        finally:
+            if hasattr(self.master, "end_render_batch"):
+                self.master.end_render_batch()
+
+        self._request_redraw()
+
     def __synthesize_color(self, name, color, no_image=True):
         if color == "default":
             if not no_image:
@@ -137,6 +332,10 @@ class _widget_properties:
 
     @root.setter
     def root(self, root):
+        old_master = getattr(self, "master", None)
+        if old_master is not None and hasattr(old_master, "defaults"):
+            old_master.defaults.unsubscribe(self)
+
         if self._root is not None:
             if self._root != self._root.master:
                 if self in self._root.children:
@@ -151,6 +350,8 @@ class _widget_properties:
             root.master.children.insert(0, self)
         self._root = root
         self.master = root.master
+        if hasattr(self.master, "defaults"):
+            self.master.defaults.subscribe(self)
         self.children = []
 
         if self.initialized:
@@ -162,6 +363,7 @@ class _widget_properties:
 
     @width.setter
     def width(self, width):
+        self._set_binding_state("width", None)
         self._size[0] = width
 
         if self.initialized:
@@ -176,6 +378,7 @@ class _widget_properties:
 
     @height.setter
     def height(self, height):
+        self._set_binding_state("height", None)
         self._size[1] = height
 
         if self.initialized:
@@ -223,6 +426,7 @@ class _widget_properties:
 
     @resize.setter
     def resize(self, value):
+        self._set_binding_state("resize", None)
         self._resize = bool(value)
         if (
             self.initialized
@@ -237,6 +441,7 @@ class _widget_properties:
 
     @text.setter
     def text(self, text):
+        self._set_binding_state("text", None)
         self._text = text
 
         if self.initialized and self.master.updates_all:
@@ -248,10 +453,22 @@ class _widget_properties:
 
     @font.setter
     def font(self, font):
-        if font == "default":
-            font = self.master.defaults.get_attribute("default_font").font
+        font, binding = self._resolve_default_value("font", font)
+        self._set_binding_state("font", binding)
+
+        if isinstance(font, fonts_manager.Font):
+            font = font.font
         else:
             font = fonts_manager.Font(font).font
+
+        if len(font) < 3:
+            font = (font[0], font[1], "normal")
+
+        self._font_source = font
+        self._font_auto_size = bool(
+            binding is not None and binding[0] == "default" and int(font[1]) == -1
+        )
+
         if self.text not in ("", None):
             min_width, min_height = fonts_manager.get_min_button_size(
                 self.master, font, self.text
@@ -271,6 +488,7 @@ class _widget_properties:
                     fonts_manager.get_max_font_size(
                         self.master, font, self.width, self.height, self.text
                     ),
+                    font[2],
                 )
 
         self._font = font
@@ -284,7 +502,34 @@ class _widget_properties:
 
     @justify.setter
     def justify(self, value):
+        self._set_binding_state("justify", None)
         self._justify = value
+
+        if self.initialized and self.master.updates_all:
+            self.update()
+
+    @property
+    def style(self):
+        return self._style_name
+
+    @style.setter
+    def style(self, value):
+        if value is None:
+            self._style_name = None
+            self._clear_style_bindings()
+            return
+
+        style_name, style_values = self._resolve_style_payload(value)
+        self._style_name = style_name
+        self._clear_style_bindings()
+
+        for prop, prop_value in style_values.items():
+            if prop not in self._STYLE_APPLIABLE_PROPERTIES:
+                continue
+            if not hasattr(type(self), prop) and not hasattr(self, prop):
+                continue
+            self._pending_style_bindings[prop] = style_name
+            setattr(self, prop, prop_value)
 
         if self.initialized and self.master.updates_all:
             self.update()
@@ -295,6 +540,8 @@ class _widget_properties:
 
     @text_color.setter
     def text_color(self, value):
+        value, binding = self._resolve_default_value("text_color", value)
+        self._set_binding_state("text_color", binding)
         value = self.__synthesize_color("text_color", value, self._no_image)
         self._colors["text_color"] = value
         # print(self._colors)
@@ -307,6 +554,8 @@ class _widget_properties:
 
     @active_text_color.setter
     def active_text_color(self, value):
+        value, binding = self._resolve_default_value("active_text_color", value)
+        self._set_binding_state("active_text_color", binding)
         value = self.__synthesize_color("active_text_color", value, self._no_image)
         self._colors["active_text_color"] = value
 
@@ -319,6 +568,8 @@ class _widget_properties:
 
     @fill.setter
     def fill(self, value):
+        value, binding = self._resolve_default_value("fill", value)
+        self._set_binding_state("fill", binding)
         fill = self.__synthesize_color("fill", value, self._no_image)
         self._colors["fill"] = fill
 
@@ -331,6 +582,8 @@ class _widget_properties:
 
     @active_fill.setter
     def active_fill(self, value):
+        value, binding = self._resolve_default_value("active_fill", value)
+        self._set_binding_state("active_fill", binding)
         active_fill = self.__synthesize_color("active_fill", value, self._no_image)
         self._colors["active_fill"] = active_fill
 
@@ -343,6 +596,8 @@ class _widget_properties:
 
     @hover_fill.setter
     def hover_fill(self, value):
+        value, binding = self._resolve_default_value("hover_fill", value)
+        self._set_binding_state("hover_fill", binding)
         hover_fill = self.__synthesize_color("hover_fill", value, self._no_image)
         self._colors["hover_fill"] = hover_fill
 
@@ -355,6 +610,8 @@ class _widget_properties:
 
     @active_hover_fill.setter
     def active_hover_fill(self, value):
+        value, binding = self._resolve_default_value("active_hover_fill", value)
+        self._set_binding_state("active_hover_fill", binding)
         active_hover_fill = self.__synthesize_color(
             "active_hover_fill", value, self._no_image
         )
@@ -369,6 +626,8 @@ class _widget_properties:
 
     @border.setter
     def border(self, value):
+        value, binding = self._resolve_default_value("border", value)
+        self._set_binding_state("border", binding)
         border = self.__synthesize_color("border", value, self._no_image)
         self._colors["border"] = border
 
@@ -381,6 +640,7 @@ class _widget_properties:
 
     @border_width.setter
     def border_width(self, value):
+        self._set_binding_state("border_width", None)
         if self.border is None:
             value = 0
         self._border_width = value
@@ -394,6 +654,7 @@ class _widget_properties:
 
     @image.setter
     def image(self, value):
+        self._set_binding_state("image", None)
         value = self.__convert_image(value)
 
         self._images["image"] = value
@@ -407,6 +668,7 @@ class _widget_properties:
 
     @active_image.setter
     def active_image(self, value):
+        self._set_binding_state("active_image", None)
         value = self.__convert_image(value)
 
         self._images["active_image"] = value
@@ -420,6 +682,7 @@ class _widget_properties:
 
     @hover_image.setter
     def hover_image(self, value):
+        self._set_binding_state("hover_image", None)
         value = self.__convert_image(value)
 
         self._images["hover_image"] = value
@@ -433,6 +696,7 @@ class _widget_properties:
 
     @active_hover_image.setter
     def active_hover_image(self, value):
+        self._set_binding_state("active_hover_image", None)
         value = self.__convert_image(value)
 
         self._images["active_hover_image"] = value
@@ -446,6 +710,8 @@ class _widget_properties:
 
     @bounds_type.setter
     def bounds_type(self, value):
+        value, binding = self._resolve_default_value("bounds_type", value)
+        self._set_binding_state("bounds_type", binding)
         self.bounds = []
         if value == "default":
             value = "non-standard" if self._images["image"] is not None else "box"
@@ -518,9 +784,64 @@ class _widget(_widget_properties, Component):
         mode: str = "standard",
         state: bool = False,
         resize: bool = False,
+        style=None,
     ):
         super().__init__()
         self.__initialize_general(root, width, height, orientation)
+
+        style_name = None
+        style_values = {}
+        style_bound_props = set()
+        if style is not None:
+            style_name, style_values = self._resolve_style_payload(style)
+
+            def apply_style_default(prop_name, current_value, default_value):
+                if prop_name in style_values and current_value == default_value:
+                    style_bound_props.add(prop_name)
+                    return style_values[prop_name]
+                return current_value
+
+            width = apply_style_default("width", width, 0)
+            height = apply_style_default("height", height, 0)
+            orientation = apply_style_default("orientation", orientation, 0)
+            text = apply_style_default("text", text, "")
+            font = apply_style_default("font", font, None)
+            justify = apply_style_default("justify", justify, "center")
+            text_color = apply_style_default("text_color", text_color, "default")
+            active_text_color = apply_style_default(
+                "active_text_color", active_text_color, None
+            )
+            fill = apply_style_default("fill", fill, "default")
+            active_fill = apply_style_default("active_fill", active_fill, "default")
+            hover_fill = apply_style_default("hover_fill", hover_fill, "default")
+            active_hover_fill = apply_style_default(
+                "active_hover_fill", active_hover_fill, "default"
+            )
+            border = apply_style_default("border", border, "default")
+            border_width = apply_style_default("border_width", border_width, 0)
+            image = apply_style_default("image", image, None)
+            active_image = apply_style_default("active_image", active_image, None)
+            hover_image = apply_style_default("hover_image", hover_image, None)
+            active_hover_image = apply_style_default(
+                "active_hover_image", active_hover_image, None
+            )
+            bounds_type = apply_style_default("bounds_type", bounds_type, "default")
+            resize = apply_style_default("resize", resize, False)
+
+        self._style_name = style_name
+        self._pending_style_bindings = {
+            prop_name: style_name for prop_name in style_bound_props
+        }
+        self._size = [width, height]
+        for prop_name in ("width", "height"):
+            if prop_name in self._pending_style_bindings:
+                self._default_bindings[prop_name] = (
+                    "style",
+                    style_name,
+                    prop_name,
+                )
+                self._pending_style_bindings.pop(prop_name, None)
+
         self.__initialize_text(text, font, justify, text_color, active_text_color)
 
         self.__initialize_colors(
@@ -540,6 +861,7 @@ class _widget(_widget_properties, Component):
         self.initialized = True
 
         self.resize = resize
+        self._pending_style_bindings = {}
 
         self.can_focus = True
 
@@ -550,6 +872,11 @@ class _widget(_widget_properties, Component):
     def __initialize_general(self, root, width, height, orientation):
         self.initialized = False
         self._no_image = True
+        self._default_bindings = {}
+        self._pending_style_bindings = {}
+        self._style_name = None
+        self._font_source = ("Helvetica", -1, "normal")
+        self._font_auto_size = False
 
         self.bg_object = None
         self.bg_object_active = None
@@ -697,6 +1024,8 @@ class _widget(_widget_properties, Component):
             self.master.request_redraw()
 
     def destroy(self):
+        if hasattr(self.master, "defaults"):
+            self.master.defaults.unsubscribe(self)
         standard_methods.delete(self)
         if hasattr(self.root, "children") and self in self.root.children:
             self.root.children.remove(self)
@@ -929,6 +1258,7 @@ class _widget(_widget_properties, Component):
 
     def _apply_size_side_effects(self):
         self._resize_widget_images()
+        self._refresh_dynamic_default_font()
         if self.bounds_type == "non-standard" and self._images.get("image") is not None:
             self.bounds = bounds_manager.generate_bounds_for_nonstandard_image(
                 self._images["image"].image
@@ -946,7 +1276,29 @@ class _widget(_widget_properties, Component):
         self.update()
 
     def _configure_text(self, text):
+        self._refresh_dynamic_default_font()
         self._request_redraw()
+
+    def _refresh_dynamic_default_font(self):
+        if not getattr(self, "_font_auto_size", False):
+            return
+        if not hasattr(self, "_font_source"):
+            return
+        source = self._font_source
+        if len(source) < 3:
+            source = (source[0], source[1], "normal")
+        if source[1] != -1:
+            return
+        if self.text not in ("", None):
+            self._font = (
+                source[0],
+                fonts_manager.get_max_font_size(
+                    self.master, source, self.width, self.height, self.text
+                ),
+                source[2],
+            )
+        else:
+            self._font = source
 
     def _configure_position(self, position):
         self._position = [int(position[0]), int(position[1])]
