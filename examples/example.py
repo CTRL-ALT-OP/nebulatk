@@ -1,10 +1,14 @@
+from _example_utils import use_local_nebulatk, example_path
+
+use_local_nebulatk()
+
 import nebulatk as ntk
 
 
 def __main__():
     canvas = ntk.Window()
     ntk.Frame(
-        canvas, image="examples/Images/background.png", width=500, height=500
+        canvas, image=example_path("Images", "background.png"), width=500, height=500
     ).place(0, 0)
     # Button(canvas,10,10,text="hahah").place()
     # Button(canvas,text="hahah").place(50,10)
@@ -15,10 +19,10 @@ def __main__():
         fill=[255, 66, 66, 15],
         width=100,
         height=100,
-        image="examples/Images/main_button_inactive.png",
-        active_image="examples/Images/main_button_inactive2.png",
-        hover_image="examples/Images/main_button_active.png",
-        active_hover_image="examples/Images/main_button_active2.png",
+        image=example_path("Images", "main_button_inactive.png"),
+        active_image=example_path("Images", "main_button_inactive2.png"),
+        hover_image=example_path("Images", "main_button_active.png"),
+        active_hover_image=example_path("Images", "main_button_active2.png"),
         mode="toggle",
     ).place(0, 0)
     ntk.Button(

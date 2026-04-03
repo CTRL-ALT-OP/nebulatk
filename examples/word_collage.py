@@ -1,8 +1,13 @@
-import nebulatk as ntk
 import os
 import random
 import threading
 from time import sleep, time
+
+from _example_utils import use_local_nebulatk, example_path
+
+use_local_nebulatk()
+
+import nebulatk as ntk
 
 fonts = [
     "Cooper Black",
@@ -27,7 +32,7 @@ colors = [
     "#d14d2e",
 ]
 
-images = [f"Images\\cloud{i}.png" for i in range(1, 5)]
+images = [example_path("Images", f"cloud{i}.png") for i in range(1, 5)]
 
 labels = []
 
@@ -333,9 +338,10 @@ def add_text():
 
 # NOTE: EXAMPLE WINDOW
 def __main__():
-    for file in os.listdir("Fonts"):
+    fonts_dir = example_path("Fonts")
+    for file in os.listdir(fonts_dir):
         print(file)
-        ntk.fonts_manager.loadfont(file, private=False)
+        ntk.fonts_manager.loadfont(os.path.join(fonts_dir, file), private=False)
     global x
     global y
     global last_random
@@ -379,11 +385,13 @@ def __main__():
 
     entry.bind("<Button-1>", clicked)
 
-    ntk.Frame(display, width=1920, height=1080, image="Images/background2.jpg").place()
+    ntk.Frame(
+        display, width=1920, height=1080, image=example_path("Images", "background2.jpg")
+    ).place()
 
     global canvas2
     canvas2 = ntk.Frame(
-        entry, width=384, height=216, image="Images/background2.jpg"
+        entry, width=384, height=216, image=example_path("Images", "background2.jpg")
     ).place(0, 50)
 
 

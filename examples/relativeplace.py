@@ -1,5 +1,10 @@
-import nebulatk as ntk
 from time import sleep
+
+from _example_utils import use_local_nebulatk
+
+use_local_nebulatk()
+
+import nebulatk as ntk
 
 
 def __main__():
