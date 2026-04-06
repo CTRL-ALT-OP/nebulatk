@@ -70,6 +70,34 @@ class Image:
         self._source_image = self.image.copy() if self.image is not None else None
         return self
 
+    def brighten(self, increment=10):
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+        new_data = [
+            (
+                min(data[i][0] + increment, 255),
+                min(data[i][1] + increment, 255),
+                min(data[i][2] + increment, 255),
+                data[i][3],
+            )
+            for i in range(len(data))
+        ]
+        return self._update_pil_data(pil_img, new_data)
+
+    def darken(self, increment=10):
+        pil_img = self.image.convert("RGBA")
+        data = pil_img.getdata()
+        new_data = [
+            (
+                max(data[i][0] - increment, 0),
+                max(data[i][1] - increment, 0),
+                max(data[i][2] - increment, 0),
+                data[i][3],
+            )
+            for i in range(len(data))
+        ]
+        return self._update_pil_data(pil_img, new_data)
+
     def recolor(self, color):
         pil_img = self.image.convert("RGBA")
         data = pil_img.getdata()
