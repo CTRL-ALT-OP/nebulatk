@@ -877,6 +877,7 @@ def _native_window_process_main(
         clipboard_fallback = ""
         mouse_state = {"x": 0, "y": 0}
         running = True
+        needs_present = True
         close_request_deadline = None
 
         def send_event(name, x=0, y=0, keysym="", char=""):
@@ -944,12 +945,27 @@ def _native_window_process_main(
             keysym = char.lower() if char.isalpha() else char
             send_event("<Key>", mouse_state["x"], mouse_state["y"], keysym, char)
 
+        def on_window_refresh(_window):
+            nonlocal needs_present
+            needs_present = True
+
+        def on_window_size(_window, _w, _h):
+            nonlocal needs_present
+            needs_present = True
+
+        def on_framebuffer_size(_window, _w, _h):
+            nonlocal needs_present
+            needs_present = True
+
         glfw.set_window_close_callback(window, on_close_requested)
         glfw.set_cursor_pos_callback(window, on_cursor_pos)
         glfw.set_cursor_enter_callback(window, on_cursor_enter)
         glfw.set_mouse_button_callback(window, on_mouse_button)
         glfw.set_key_callback(window, on_key)
         glfw.set_char_callback(window, on_char)
+        glfw.set_window_refresh_callback(window, on_window_refresh)
+        glfw.set_window_size_callback(window, on_window_size)
+        glfw.set_framebuffer_size_callback(window, on_framebuffer_size)
 
         hwnd = glfw.get_win32_window(window) if hasattr(glfw, "get_win32_window") else 0
         event_queue.put(
@@ -957,13 +973,13 @@ def _native_window_process_main(
         )
 
         while running and not glfw.window_should_close(window):
-            glfw.poll_events()
-
+            had_commands = False
             while True:
                 try:
                     message = command_queue.get_nowait()
                 except std_queue.Empty:
                     break
+                had_commands = True
 
                 if not isinstance(message, dict):
                     continue
@@ -979,7 +995,7 @@ def _native_window_process_main(
                 elif op == "close_request_handled":
                     close_request_deadline = None
                 elif op == "wake":
-                    pass
+                    needs_present = True
                 elif op == "geometry":
                     glfw.set_window_size(
                         window,
@@ -990,6 +1006,7 @@ def _native_window_process_main(
                         glfw.set_window_pos(
                             window, int(command["x"]), int(command["y"])
                         )
+                    needs_present = True
                 elif op == "title":
                     glfw.set_window_title(window, str(command.get("value", "")))
                 elif op == "resizable":
@@ -1007,6 +1024,7 @@ def _native_window_process_main(
                     glfw.hide_window(window)
                 elif op == "deiconify":
                     glfw.show_window(window)
+                    needs_present = True
                 elif op == "iconbitmap":
                     _set_windows_window_icon(hwnd, command.get("value"))
                 elif op == "focus":
@@ -1017,6 +1035,7 @@ def _native_window_process_main(
                         int(command.get("width", width)),
                         int(command.get("height", height)),
                     )
+                    needs_present = True
                 elif op == "clipboard_set":
                     clipboard_fallback = str(command.get("value", ""))
                     glfw.set_clipboard_string(window, clipboard_fallback)
@@ -1048,18 +1067,27 @@ def _native_window_process_main(
                         }
                     )
 
-            try:
-                display.draw()
-                glfw.swap_buffers(window)
-            except Exception:
-                traceback.print_exc()
+            if needs_present:
+                glfw.poll_events()
+                try:
+                    display.draw()
+                    glfw.swap_buffers(window)
+                    needs_present = False
+                except Exception:
+                    traceback.print_exc()
+            elif not had_commands:
+                # Keep idle CPU low while avoiding frame-command wake latency.
+                # A short timeout prevents visible stutter when animation frames
+                # are submitted from the owner process while no GLFW events fire.
+                glfw.wait_events_timeout(0.002)
+            else:
+                glfw.poll_events()
             if (
                 close_request_deadline is not None
                 and time.time() >= close_request_deadline
             ):
                 running = False
                 glfw.set_window_should_close(window, True)
-            time.sleep(0.001)
     except Exception as exc:
         report_startup_error(f"Native window process exception: {exc}")
         traceback.print_exc()
