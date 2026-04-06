@@ -1,5 +1,10 @@
 from math import sin, asin, cos, radians, sqrt
 
+try:
+    from . import widget_appearance
+except ImportError:
+    import widget_appearance
+
 # Define the names of objects
 IMAGE_OBJECTS = [
     "image_object",
@@ -169,62 +174,31 @@ def _globally_visible(_object):
     global_visible = True
     root = _object
     while hasattr(root, "root") and root.root != root:
-        if not getattr(root, "visible", True):
+        if not widget_appearance.safe_getattr(root, "visible", True):
             global_visible = False
             break
         root = root.root
-    return (
-        global_visible
-        and getattr(_object, "visible", True)
-        and getattr(_object, "_render_visible", True)
-    )
+    return global_visible and widget_appearance.is_widget_visible(_object, True)
 
 
 def _resolve_image_for_slot(_object, slot):
-    image_by_slot = {
-        "image_object": "image",
-        "active_object": "active_image",
-        "hover_object": "hover_image",
-        "hover_object_active": "active_hover_image",
-    }
-    fallback = {
-        "hover_object_active": ["active_hover_image", "hover_image", "active_image", "image"],
-        "hover_object": ["hover_image", "image"],
-        "active_object": ["active_image", "image"],
-        "image_object": ["image"],
-    }
-    for image_attr in fallback.get(slot, [image_by_slot.get(slot, "image")]):
-        if check(_object, image_attr):
-            return getattr(_object, image_attr)
-    return None
+    return widget_appearance.resolve_slot_value(
+        _object, slot, widget_appearance.IMAGE_SLOT_FALLBACKS, ("image",)
+    )
 
 
 def _resolve_bg_for_slot(_object, slot):
-    color_by_slot = {
-        "bg_object": "fill",
-        "bg_object_active": "active_fill",
-        "bg_object_hover": "hover_fill",
-        "bg_object_hover_active": "active_hover_fill",
-    }
-    fallback = {
-        "bg_object_hover_active": ["active_hover_fill", "hover_fill", "active_fill", "fill"],
-        "bg_object_hover": ["hover_fill", "fill"],
-        "bg_object_active": ["active_fill", "fill"],
-        "bg_object": ["fill"],
-    }
-    for color_attr in fallback.get(slot, [color_by_slot.get(slot, "fill")]):
-        value = getattr(_object, color_attr, None)
-        if value is not None:
-            return value
-    return None
+    return widget_appearance.resolve_slot_value(
+        _object, slot, widget_appearance.BG_SLOT_FALLBACKS, ("fill",)
+    )
 
 
 def _resolve_text_fill_for_slot(_object, slot):
     if slot == "active_text_object":
-        return getattr(_object, "active_text_color", None) or getattr(
-            _object, "text_color", None
-        )
-    return getattr(_object, "text_color", None)
+        return widget_appearance.safe_getattr(
+            _object, "active_text_color", None
+        ) or widget_appearance.safe_getattr(_object, "text_color", None)
+    return widget_appearance.safe_getattr(_object, "text_color", None)
 
 
 def _request_redraw(_object):

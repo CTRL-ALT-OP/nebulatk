@@ -719,7 +719,9 @@ class _window_internal(threading.Thread, Component):
                 self._apply_default_window_background()
             else:
                 self._background_color_bound_to_defaults = False
-                self.background_color = self._normalize_background_color(background_color)
+                self.background_color = self._normalize_background_color(
+                    background_color
+                )
                 if self.background is not None:
                     self.background.fill = self.background_color
 
@@ -885,7 +887,12 @@ colors = [
 # NOTE: EXAMPLE WINDOW
 def __main__():
     canvas = Window(
-        title=None, width=800, height=500, render_mode="image_gl", fps=60
+        title=None,
+        width=800,
+        height=500,
+        render_mode="image_gl",
+        fps=60,
+        background_color="#00000000",
     ).place(400, 300)
     print(
         fonts_manager.loadfont(
