@@ -19,7 +19,9 @@ if __package__:
         defaults,
         animation_controller,
         taskbar_manager,
-        rendering,
+        native_gl_window,
+        pil_image_renderer,
+        opengl_image_display,
         file_manager,
     )
 
@@ -38,7 +40,9 @@ else:
     import defaults
     import animation_controller
     import taskbar_manager
-    import rendering
+    import native_gl_window
+    import pil_image_renderer
+    import opengl_image_display
     import file_manager
 
     # Import Component and _widget classes from widgets.base
@@ -48,7 +52,6 @@ else:
     from widgets import Button, Label, Entry, Frame, Slider, Scrollbar, Container
 
 
-FileDialog = file_manager.FileDialog
 logger = logging.getLogger(__name__)
 
 
@@ -575,17 +578,17 @@ class _window_internal(threading.Thread, Component):
         try:
             self._window_thread_id = threading.get_ident()
             # Create window
-            self.root = rendering.NativeGLWindow(
+            self.root = native_gl_window.NativeGLWindow(
                 self.width,
                 self.height,
                 title=self.title,
                 resizable=self.resizable,
                 override=self.override,
             )
-            self.renderer = rendering.PILImageRenderer(
+            self.renderer = pil_image_renderer.PILImageRenderer(
                 self, self.canvas_width, self.canvas_height, fps=self.fps
             )
-            self.display = rendering.OpenGLImageDisplay(
+            self.display = opengl_image_display.OpenGLImageDisplay(
                 self.root, self.canvas_width, self.canvas_height
             )
             self.root.set_draw_callback(self.display.draw)

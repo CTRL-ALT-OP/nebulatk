@@ -7,8 +7,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-# Import nebulatk
-import nebulatk as ntk
+import file_manager
 
 
 class TestFileDialog:
@@ -27,7 +26,7 @@ class TestFileDialog:
         mock_file = MagicMock()
         mock_windows_dialog.return_value = mock_file
 
-        result = ntk.FileDialog(
+        result = file_manager.FileDialog(
             app, initialdir=None, mode="r", filetypes=(("All files", "*"),)
         )
 
@@ -44,7 +43,7 @@ class TestFileDialog:
         mock_file = MagicMock()
         mock_macos_dialog.return_value = mock_file
 
-        result = ntk.FileDialog(app, initialdir="/tmp", mode="rb", filetypes=[])
+        result = file_manager.FileDialog(app, initialdir="/tmp", mode="rb", filetypes=[])
 
         mock_macos_dialog.assert_called_once_with("/tmp", "rb", [])
         assert result == mock_file
@@ -56,7 +55,7 @@ class TestFileDialog:
         """Returns None when Linux picker is cancelled."""
         mock_linux_dialog.return_value = None
 
-        result = ntk.FileDialog(app)
+        result = file_manager.FileDialog(app)
 
         mock_linux_dialog.assert_called_once_with(None, "r", (("All files", "*"),))
         assert result is None
@@ -68,7 +67,7 @@ class TestFileDialog:
         """Ensures leave_window runs even on backend errors."""
         mock_linux_dialog.side_effect = RuntimeError("dialog failed")
 
-        result = ntk.FileDialog(app)
+        result = file_manager.FileDialog(app)
 
         assert result is None
         assert app.leave_window.call_count == 2

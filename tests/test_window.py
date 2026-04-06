@@ -11,7 +11,8 @@ sys.path.insert(
 
 # Now import your package/module
 import nebulatk as ntk
-import rendering
+import pil_image_renderer
+import opengl_image_display
 
 
 def _wait_for_frame(window: ntk.Window, timeout_s: float = 1.0):
@@ -159,7 +160,7 @@ def test_final_composited_frame_bytes_match_expected_pixels(monkeypatch) -> None
     container.children = [make_widget(-4, 1, 8, 8, "#ff0000ff")]
 
     background = make_widget(0, 0, 20, 20, "#0000ffff")
-    renderer = rendering.PILImageRenderer(
+    renderer = pil_image_renderer.PILImageRenderer(
         window=SimpleNamespace(children=[container, background]),
         width=20,
         height=20,
@@ -167,14 +168,14 @@ def test_final_composited_frame_bytes_match_expected_pixels(monkeypatch) -> None
     )
 
     now = [70.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
     renderer._last_render = 0.0
     renderer._redraw_requested = True
     frame = renderer.render_if_due()
     assert frame is not None
 
     proxy = RootProxy()
-    display = rendering.OpenGLImageDisplay(proxy, width=20, height=20)
+    display = opengl_image_display.OpenGLImageDisplay(proxy, width=20, height=20)
     display.show_frame(frame)
 
     assert len(proxy.submissions) == 1

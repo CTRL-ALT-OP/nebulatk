@@ -6,7 +6,6 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-import rendering
 import pil_image_renderer
 
 
@@ -29,12 +28,12 @@ def _make_widget(x, y, width, height, fill, visible=True):
 
 def _make_renderer(children, fps=10):
     window = SimpleNamespace(children=children)
-    return rendering.PILImageRenderer(window=window, width=20, height=20, fps=fps)
+    return pil_image_renderer.PILImageRenderer(window=window, width=20, height=20, fps=fps)
 
 
 def test_render_if_due_returns_none_before_frame_interval(monkeypatch):
     now = [10.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
 
     renderer = _make_renderer(children=[])
     renderer._last_render = now[0]
@@ -46,7 +45,7 @@ def test_render_if_due_returns_none_before_frame_interval(monkeypatch):
 
 def test_render_if_due_updates_last_render_without_redraw(monkeypatch):
     now = [20.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
 
     renderer = _make_renderer(children=[])
     renderer._last_render = 0.0
@@ -63,7 +62,7 @@ def test_render_if_due_draws_frame_and_clears_redraw(monkeypatch):
     renderer = _make_renderer(children=[widget])
 
     now = [30.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
     renderer._last_render = 0.0
     renderer._redraw_requested = True
 
@@ -87,7 +86,7 @@ def test_render_children_respects_front_to_back_order(monkeypatch):
     renderer = _make_renderer(children=[top, bottom], fps=1)
 
     now = [40.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
     renderer._last_render = 0.0
     renderer._redraw_requested = True
 
@@ -106,7 +105,7 @@ def test_render_children_skips_invisible_widgets(monkeypatch):
     renderer = _make_renderer(children=[hidden_top, visible_bottom], fps=1)
 
     now = [50.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
     renderer._last_render = 0.0
     renderer._redraw_requested = True
 
@@ -141,7 +140,7 @@ def test_container_layers_clip_children_and_overlay_in_order(monkeypatch):
     renderer = _make_renderer(children=[container, background], fps=1)
 
     now = [60.0]
-    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    monkeypatch.setattr(pil_image_renderer.time, "time", lambda: now[0])
     renderer._last_render = 0.0
     renderer._redraw_requested = True
 

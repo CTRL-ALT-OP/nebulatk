@@ -6,13 +6,13 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-import rendering
 import standard_methods
 import widget_appearance
+import pil_image_renderer
 
 
 def _renderer():
-    return rendering.PILImageRenderer(
+    return pil_image_renderer.PILImageRenderer(
         window=SimpleNamespace(children=[]), width=10, height=10, fps=60
     )
 

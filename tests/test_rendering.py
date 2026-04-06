@@ -1,8 +1,6 @@
 import os
 import sys
-import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
@@ -11,7 +9,8 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-import rendering
+import native_gl_window
+import opengl_image_display
 
 
 class _FakeGlfw:
@@ -42,57 +41,40 @@ class _FakeGlfw:
 
 
 def test_key_name_helpers_match(monkeypatch):
-    monkeypatch.setattr(rendering, "glfw", _FakeGlfw)
+    monkeypatch.setattr(native_gl_window, "glfw", _FakeGlfw)
 
     for key in (_FakeGlfw.KEY_BACKSPACE, _FakeGlfw.KEY_A, 321, 999):
-        assert rendering._native_window_process_key_name(key) == rendering.NativeGLWindow._key_name(
-            object(), key
-        )
+        assert native_gl_window._native_window_process_key_name(
+            key
+        ) == native_gl_window.NativeGLWindow._key_name(object(), key)
 
 
 def test_should_dispatch_keypress_event_uses_char_callback_for_plain_text(monkeypatch):
-    monkeypatch.setattr(rendering, "glfw", _FakeGlfw)
+    monkeypatch.setattr(native_gl_window, "glfw", _FakeGlfw)
 
-    assert rendering._should_dispatch_keypress_event("a", "a", 0) is False
-    assert rendering._should_dispatch_keypress_event("A", "a", 0) is False
-    assert rendering._should_dispatch_keypress_event("a", "a", _FakeGlfw.MOD_CONTROL) is True
-    assert rendering._should_dispatch_keypress_event("BackSpace", "", 0) is True
-
-
-def test_on_key_skips_plain_text_without_modifiers(monkeypatch):
-    monkeypatch.setattr(rendering, "glfw", _FakeGlfw)
-    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
-    window._event_lock = threading.Lock()
-    window._mouse_x = 10
-    window._mouse_y = 20
-    window._dispatch = MagicMock()
-    window._key_name = lambda _key: "a"
-
-    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.PRESS, 0)
-    window._dispatch.assert_not_called()
-
-    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.PRESS, _FakeGlfw.MOD_CONTROL)
-    window._dispatch.assert_called_once()
-
-    window._dispatch.reset_mock()
-    window._on_key(None, _FakeGlfw.KEY_A, 0, _FakeGlfw.RELEASE, 0)
-    window._dispatch.assert_called_once()
-    assert window._dispatch.call_args[0][0] == "<KeyRelease>"
+    assert native_gl_window._should_dispatch_keypress_event("a", "a", 0) is False
+    assert native_gl_window._should_dispatch_keypress_event("A", "a", 0) is False
+    assert (
+        native_gl_window._should_dispatch_keypress_event("a", "a", _FakeGlfw.MOD_CONTROL)
+        is True
+    )
+    assert native_gl_window._should_dispatch_keypress_event("BackSpace", "", 0) is True
 
 
-def test_on_char_dispatches_text_event():
-    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
-    window._event_lock = threading.Lock()
-    window._mouse_x = 1
-    window._mouse_y = 2
-    window._dispatch = MagicMock()
+def test_build_key_event_uses_glfw_key_name(monkeypatch):
+    monkeypatch.setattr(native_gl_window, "glfw", _FakeGlfw)
+    event = native_gl_window._build_key_event(10, 20, _FakeGlfw.KEY_A, 0)
 
-    window._on_char(None, ord("A"))
-    window._dispatch.assert_called_once()
-    event = window._dispatch.call_args[0][1]
-    assert window._dispatch.call_args[0][0] == "<Key>"
+    assert event.x == 10
+    assert event.y == 20
     assert event.keysym == "a"
-    assert event.char == "A"
+    assert event.char == "a"
+
+
+def test_text_input_char_helper():
+    assert native_gl_window._is_text_input_char("A") is True
+    assert native_gl_window._is_text_input_char("\n") is False
+    assert native_gl_window._is_text_input_char("Left") is False
 
 
 def test_opengl_image_display_proxy_show_frame_submits_bytes():
@@ -103,7 +85,7 @@ def test_opengl_image_display_proxy_show_frame_submits_bytes():
         root.submit_frame_calls.append((frame_rgba, width, height))
 
     root.submit_frame = _capture_submit
-    display = rendering.OpenGLImageDisplay(root=root, width=1, height=1)
+    display = opengl_image_display.OpenGLImageDisplay(root=root, width=1, height=1)
 
     frame = PILImage.new("RGBA", (3, 2), (10, 20, 30, 40))
     display.show_frame(frame)
@@ -117,7 +99,9 @@ def test_opengl_image_display_proxy_show_frame_submits_bytes():
 
 
 def test_opengl_image_display_show_frame_sets_local_upload_state():
-    display = rendering.OpenGLImageDisplay.__new__(rendering.OpenGLImageDisplay)
+    display = opengl_image_display.OpenGLImageDisplay.__new__(
+        opengl_image_display.OpenGLImageDisplay
+    )
     display._proxy_mode = False
     display.width = 0
     display.height = 0
@@ -141,7 +125,9 @@ def test_opengl_image_display_show_frame_sets_local_upload_state():
 
 
 def test_opengl_image_display_draw_is_noop_in_proxy_mode():
-    display = rendering.OpenGLImageDisplay.__new__(rendering.OpenGLImageDisplay)
+    display = opengl_image_display.OpenGLImageDisplay.__new__(
+        opengl_image_display.OpenGLImageDisplay
+    )
     display._proxy_mode = True
 
     # Should return immediately without touching GLFW/GL state.
@@ -149,7 +135,7 @@ def test_opengl_image_display_draw_is_noop_in_proxy_mode():
 
 
 def test_handle_process_message_records_startup_error():
-    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window = native_gl_window.NativeGLWindow.__new__(native_gl_window.NativeGLWindow)
     window._window_id = "native-test"
     window._startup_error = None
 
@@ -160,7 +146,7 @@ def test_handle_process_message_records_startup_error():
 
 
 def test_wait_for_process_ready_raises_with_startup_error():
-    window = rendering.NativeGLWindow.__new__(rendering.NativeGLWindow)
+    window = native_gl_window.NativeGLWindow.__new__(native_gl_window.NativeGLWindow)
     window._hwnd = 0
     window._startup_error = "glfw.create_window() failed."
     window._process_events = lambda: None
