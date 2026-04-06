@@ -34,10 +34,9 @@ def test_container_initialization_matches_current_api(app):
     assert container.root == app
     assert container.master == container
     assert container._window == app
+    assert container._is_container_layer is True
     assert container.initialized is True
     assert container.children == []
-    assert container.canvas is None
-    assert container._image_render_mode is True
 
 
 def test_container_place_and_parenting(app):

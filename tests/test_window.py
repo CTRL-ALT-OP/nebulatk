@@ -1,7 +1,9 @@
 import sys
 import os
 import time
+from types import SimpleNamespace
 import pytest
+from PIL import Image as PILImage
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
@@ -9,6 +11,7 @@ sys.path.insert(
 
 # Now import your package/module
 import nebulatk as ntk
+import rendering
 
 
 def _wait_for_frame(window: ntk.Window, timeout_s: float = 1.0):
@@ -112,3 +115,73 @@ def test_window_image_gl_resize_updates_renderer(image_gl_window: ntk.Window) ->
     assert image_gl_window.renderer.height == 290
     assert image_gl_window.canvas_width == 410
     assert image_gl_window.canvas_height == 290
+
+
+def test_final_composited_frame_bytes_match_expected_pixels(monkeypatch) -> None:
+    class RootProxy:
+        def __init__(self):
+            self.submissions = []
+
+        def submit_frame(self, frame_rgba, width, height):
+            self.submissions.append((frame_rgba, width, height))
+
+    class Container:
+        pass
+
+    def make_widget(x, y, width, height, fill, visible=True):
+        return SimpleNamespace(
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            fill=fill,
+            visible=visible,
+            _render_visible=True,
+            border_width=0,
+            border=None,
+            text="",
+            font=None,
+            children=[],
+        )
+
+    container = Container()
+    container.x = 2
+    container.y = 2
+    container.width = 10
+    container.height = 10
+    container.fill = None
+    container.visible = True
+    container._render_visible = True
+    container.border_width = 0
+    container.border = None
+    container.text = ""
+    container.font = None
+    container.children = [make_widget(-4, 1, 8, 8, "#ff0000ff")]
+
+    background = make_widget(0, 0, 20, 20, "#0000ffff")
+    renderer = rendering.PILImageRenderer(
+        window=SimpleNamespace(children=[container, background]),
+        width=20,
+        height=20,
+        fps=1,
+    )
+
+    now = [70.0]
+    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    renderer._last_render = 0.0
+    renderer._redraw_requested = True
+    frame = renderer.render_if_due()
+    assert frame is not None
+
+    proxy = RootProxy()
+    display = rendering.OpenGLImageDisplay(proxy, width=20, height=20)
+    display.show_frame(frame)
+
+    assert len(proxy.submissions) == 1
+    frame_rgba, width, height = proxy.submissions[0]
+    assert (width, height) == (20, 20)
+
+    submitted = PILImage.frombytes("RGBA", (width, height), frame_rgba, "raw", "RGBA")
+    assert submitted.getpixel((3, 4)) == (255, 0, 0, 255)
+    assert submitted.getpixel((7, 4)) == (0, 0, 255, 255)
+    assert submitted.getpixel((1, 4)) == (0, 0, 255, 255)

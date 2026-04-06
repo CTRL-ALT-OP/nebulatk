@@ -114,3 +114,40 @@ def test_render_children_skips_invisible_widgets(monkeypatch):
 
     pixel = frame.getpixel((6, 6))
     assert pixel == (0, 255, 0, 255)
+
+
+def test_container_layers_clip_children_and_overlay_in_order(monkeypatch):
+    class Container:
+        pass
+
+    container = Container()
+    container.x = 2
+    container.y = 2
+    container.width = 10
+    container.height = 10
+    container.fill = None
+    container.visible = True
+    container._render_visible = True
+    container.border_width = 0
+    container.border = None
+    container.text = ""
+    container.font = None
+
+    clipped_child = _make_widget(-4, 1, 8, 8, "#ff0000ff")
+    container.children = [clipped_child]
+
+    background = _make_widget(0, 0, 20, 20, "#0000ffff")
+    renderer = _make_renderer(children=[container, background], fps=1)
+
+    now = [60.0]
+    monkeypatch.setattr(rendering.time, "time", lambda: now[0])
+    renderer._last_render = 0.0
+    renderer._redraw_requested = True
+
+    frame = renderer.render_if_due()
+    assert frame is not None
+
+    assert frame.getpixel((3, 4)) == (255, 0, 0, 255)
+    # Would be red without container clipping.
+    assert frame.getpixel((7, 4)) == (0, 0, 255, 255)
+    assert frame.getpixel((1, 4)) == (0, 0, 255, 255)

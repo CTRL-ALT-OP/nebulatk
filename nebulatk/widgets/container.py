@@ -29,7 +29,7 @@ class Container(Component):
         self.can_hover = True
         self.can_click = True
 
-        self._root.children.append(self)
+        self._root.children.insert(0, self)
         self.children = []
         self.bounds = {}
         self.active = None
@@ -38,9 +38,8 @@ class Container(Component):
         self.updates_all = False
         self.defaults = self._window.defaults
 
-        self.maps = {}
-        self._image_render_mode = True
-        self.canvas = None
+        # Render pipeline marker: containers are composited as their own layers.
+        self._is_container_layer = True
 
         self.initialized = True
 
@@ -63,7 +62,7 @@ class Container(Component):
         self._root = root
         self._window = self._resolve_window(root)
         if root is not None:
-            root.children.append(self)
+            root.children.insert(0, self)
 
     @property
     def x(self):
@@ -138,11 +137,6 @@ class Container(Component):
             if hovered_new is not None:
                 hovered_new.hovered()
 
-    def leave_container(self, event):
-        if self.hovered_child is not None:
-            self.hovered_child.hover_end()
-            self.hovered_child = None
-
     def typing(self, event):
         if self.active is not None and self.active.can_type:
             self.active.typed(event)
@@ -160,9 +154,6 @@ class Container(Component):
             setattr(self, key, value)
         self.request_redraw()
 
-    def replicate_object(self, child):
-        return
-
     def _show(self, root):
         pass
 
@@ -174,9 +165,6 @@ class Container(Component):
         self._container_y = y
         self.request_redraw()
         return self
-
-    def _update_background_positions(self):
-        return
 
     def hovered(self):
         self.hovering = True
@@ -195,9 +183,6 @@ class Container(Component):
 
     def change_active(self):
         pass
-
-    def _ensure_proper_layering(self):
-        return
 
     def begin_render_batch(self):
         if hasattr(self._window, "begin_render_batch"):
