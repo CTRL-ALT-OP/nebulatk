@@ -190,7 +190,7 @@ class NativeGLWindow:
         self._send_native_command(op)
 
     def _wait_for_process_ready(self):
-        deadline = time.time() + 5.0
+        deadline = time.time() + 10.0
         while time.time() < deadline:
             self._process_events()
             if self._hwnd:
