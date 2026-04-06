@@ -147,3 +147,60 @@ def test_get_font_debug_info_reports_selected_candidate(monkeypatch):
     assert info["selected_candidate"] == "arial.ttf"
     assert info["loaded_font_path"] == r"C:\Windows\Fonts\arial.ttf"
     assert info["used_default_font"] is False
+
+
+def test_resolve_draw_font_normalizes_missing_style(monkeypatch):
+    captured = {}
+    token = object()
+
+    def fake_load(family, size, style):
+        captured["family"] = family
+        captured["size"] = size
+        captured["style"] = style
+        return token
+
+    monkeypatch.setattr(fonts_manager, "_load_font", fake_load)
+
+    resolved = fonts_manager.resolve_draw_font(("Arial", 12))
+    assert resolved is token
+    assert captured == {"family": "Arial", "size": 12, "style": "normal"}
+
+
+def test_resolve_draw_font_falls_back_on_invalid_font(monkeypatch):
+    captured = {}
+    token = object()
+
+    def fake_load(family, size, style):
+        captured["family"] = family
+        captured["size"] = size
+        captured["style"] = style
+        return token
+
+    monkeypatch.setattr(fonts_manager, "_load_font", fake_load)
+
+    resolved = fonts_manager.resolve_draw_font(123)
+    assert resolved is token
+    assert captured == {"family": "arial", "size": 12, "style": "normal"}
+
+
+def test_get_font_debug_info_uses_shared_selection_path(monkeypatch):
+    dummy_info = {
+        "requested_family": "Arial",
+        "requested_size": 12,
+        "requested_style": "normal",
+        "windows_resolved_path": None,
+        "candidate_chain": ["arial.ttf"],
+        "selected_candidate": "arial.ttf",
+        "loaded_font": object(),
+        "loaded_font_path": r"C:\Windows\Fonts\arial.ttf",
+        "used_default_font": False,
+    }
+    monkeypatch.setattr(
+        fonts_manager, "_resolve_font_selection", lambda _family, _size, _style: dummy_info
+    )
+
+    info = fonts_manager.get_font_debug_info(("Arial", 12, "normal"))
+    assert info["requested_family"] == "Arial"
+    assert info["requested_size"] == 12
+    assert info["requested_style"] == "normal"
+    assert info["selected_candidate"] == "arial.ttf"

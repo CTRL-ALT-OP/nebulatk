@@ -186,14 +186,7 @@ class PILImageRenderer:
         text = self._safe_attr(widget, "text", "")
         font_spec = self._safe_attr(widget, "font", None)
         if text not in ("", None) and font_spec is not None:
-            try:
-                font_style = font_spec[2] if len(font_spec) > 2 else "normal"
-                font_size = max(1, int(font_spec[1]))
-                text_font = fonts_manager._load_font(
-                    str(font_spec[0]), font_size, str(font_style)
-                )
-            except Exception:
-                text_font = fonts_manager._load_font("arial", 12, "normal")
+            text_font = fonts_manager.resolve_draw_font(font_spec)
             justify = self._safe_attr(widget, "justify", "center")
             if justify == "left":
                 text_x = abs_x

@@ -205,24 +205,17 @@ def _font_candidates(family, style):
     return candidates, resolved_path
 
 
-@lru_cache(maxsize=256)
-def _load_font(family, size, style="normal"):
+def _coerce_font(font):
+    if isinstance(font, Font):
+        font = font.font
+    elif not isinstance(font, (list, tuple)):
+        font = Font(font).font
+    return _normalize_font(font)
+
+
+def _resolve_font_selection(family, size, style="normal"):
+    family = str(family)
     size = max(1, int(size))
-    candidates, _ = _font_candidates(family, style)
-    for candidate in candidates:
-        try:
-            return ImageFont.truetype(candidate, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def get_font_debug_info(font):
-    """Return detailed diagnostics for a font tuple used by rendering."""
-    font = _normalize_font(font)
-    family = str(font[0])
-    size = max(1, int(font[1]))
-    style = str(font[2])
     normalized_style = _normalize_font_style(style)
     candidates, windows_resolved_path = _font_candidates(family, normalized_style)
 
@@ -250,8 +243,46 @@ def get_font_debug_info(font):
         "windows_resolved_path": windows_resolved_path,
         "candidate_chain": candidates,
         "selected_candidate": selected_candidate,
+        "loaded_font": loaded_font,
         "loaded_font_path": getattr(loaded_font, "path", None),
         "used_default_font": used_default_font,
+    }
+
+
+@lru_cache(maxsize=256)
+def _load_font(family, size, style="normal"):
+    info = _resolve_font_selection(family, size, style)
+    return info["loaded_font"]
+
+
+def resolve_draw_font(font):
+    """Resolve a widget font specification to a concrete PIL font object."""
+    try:
+        normalized_font = _coerce_font(font)
+        family, size, style = normalized_font
+    except Exception:
+        family, size, style = ("arial", 12, "normal")
+    return _load_font(family, size, style)
+
+
+def get_font_debug_info(font):
+    """Return detailed diagnostics for a font tuple used by rendering."""
+    try:
+        family, size, style = _coerce_font(font)
+    except Exception:
+        family, size, style = ("arial", 12, "normal")
+
+    info = _resolve_font_selection(family, size, style)
+
+    return {
+        "requested_family": info["requested_family"],
+        "requested_size": info["requested_size"],
+        "requested_style": info["requested_style"],
+        "windows_resolved_path": info["windows_resolved_path"],
+        "candidate_chain": info["candidate_chain"],
+        "selected_candidate": info["selected_candidate"],
+        "loaded_font_path": info["loaded_font_path"],
+        "used_default_font": info["used_default_font"],
     }
 
 
@@ -266,8 +297,7 @@ def measure_text(root, font, text):
     Returns:
         int: The width of the text in pixels
     """
-    font = _normalize_font(font)
-    pil_font = _load_font(font[0], font[1], font[2])
+    pil_font = resolve_draw_font(font)
     if not text:
         return 0
     left, _, right, _ = pil_font.getbbox(text)
@@ -285,8 +315,7 @@ def get_font_metrics(root, font, attr):
     Returns:
         int: The value of the requested font metric
     """
-    font = _normalize_font(font)
-    pil_font = _load_font(font[0], font[1], font[2])
+    pil_font = resolve_draw_font(font)
     ascent, descent = pil_font.getmetrics()
     metrics = {
         "ascent": int(ascent),

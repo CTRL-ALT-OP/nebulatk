@@ -7,6 +7,7 @@ sys.path.insert(
 )
 
 import rendering
+import pil_image_renderer
 
 
 def _make_widget(x, y, width, height, fill, visible=True):
@@ -151,3 +152,28 @@ def test_container_layers_clip_children_and_overlay_in_order(monkeypatch):
     # Would be red without container clipping.
     assert frame.getpixel((7, 4)) == (0, 0, 255, 255)
     assert frame.getpixel((1, 4)) == (0, 0, 255, 255)
+
+
+def test_renderer_uses_public_font_resolver(monkeypatch):
+    widget = _make_widget(1, 1, 16, 10, None)
+    widget.text = "Hi"
+    widget.font = ("Arial", 12)
+    widget.text_color = "#000000ff"
+    widget.justify = "center"
+
+    captured = {"font_spec": None}
+    original_resolve = pil_image_renderer.fonts_manager.resolve_draw_font
+
+    def spy(font_spec):
+        captured["font_spec"] = font_spec
+        return original_resolve(font_spec)
+
+    monkeypatch.setattr(pil_image_renderer.fonts_manager, "resolve_draw_font", spy)
+
+    renderer = _make_renderer(children=[widget], fps=1)
+    renderer._last_render = 0.0
+    renderer._redraw_requested = True
+    frame = renderer.render_if_due()
+
+    assert frame is not None
+    assert captured["font_spec"] == ("Arial", 12)
