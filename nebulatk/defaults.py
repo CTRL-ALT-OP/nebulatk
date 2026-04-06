@@ -192,10 +192,6 @@ class new:
             raise AttributeError(f"Unknown default: {key}")
         return self._defaults[key]
 
-    # Compatibility for legacy call sites.
-    def get_attribute(self, name):
-        return self.get_default(name)
-
     def subscribe(self, widget):
         if widget is not None:
             self._subscribers.add(widget)

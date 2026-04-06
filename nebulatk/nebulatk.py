@@ -702,7 +702,7 @@ class _window_internal(threading.Thread, Component):
             )
         return self
 
-    def configure(self, _object=None, **kwargs):
+    def configure(self, **kwargs):
         """Configure window properties.
 
         Supported properties:
@@ -715,9 +715,6 @@ class _window_internal(threading.Thread, Component):
         Returns:
             self: Returns self for method chaining
         """
-        if _object is not None:
-            raise TypeError("_object is not supported for Window.configure().")
-
         if "width" in kwargs or "height" in kwargs:
             self.resize(kwargs.get("width"), kwargs.get("height"))
 
@@ -739,9 +736,7 @@ class _window_internal(threading.Thread, Component):
         if iconbitmap is not None:
             self.iconbitmap(iconbitmap)
 
-        background_color = kwargs.get(
-            "background_color", kwargs.get("background-color")
-        )
+        background_color = kwargs.get("background_color")
         if background_color is not None:
             if background_color == "default":
                 self._background_color_bound_to_defaults = True
@@ -818,17 +813,13 @@ def Window(
     if type(resizable) is bool:
         resizable = (resizable, resizable)
 
-    if "background-color" in kwargs:
-        background_color = kwargs.pop("background-color")
-    if "defaults-file" in kwargs:
-        defaults_file = kwargs.pop("defaults-file")
     if kwargs:
         raise TypeError(f"Unexpected Window arguments: {', '.join(kwargs.keys())}")
 
     if render_mode != "image_gl":
         raise ValueError(
             "This branch only supports render_mode='image_gl'. "
-            "Use master for legacy tkinter canvas rendering."
+            "Non-image_gl render modes are no longer supported."
         )
 
     if title is None:

@@ -146,14 +146,6 @@ class Image:
         self._source_image = self.image.copy() if self.image is not None else None
         return self
 
-    def tk_image(self, _object):
-        return self.image
-
-
-def convert_image(_object, image):
-    # Backward-compatible shim: rendering always consumes PIL images directly.
-    return image
-
 
 def load_image(_object, image, return_both=False):
     """Load an image with PIL

@@ -6,7 +6,9 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-from nebulatk import _window_internal
+import nebulatk as ntk
+
+_window_internal = ntk._window_internal
 
 
 def _make_window(fps=60):

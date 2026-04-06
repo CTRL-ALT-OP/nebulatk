@@ -190,7 +190,7 @@ def _open_with_linux_native(initialdir, mode, filetypes):
 
 
 def FileDialog(window, initialdir=None, mode="r", filetypes=(("All files", "*"),)):
-    """Compatibility wrapper around a platform file picker."""
+    """Open a platform-native file picker and return an open file handle."""
     window.leave_window(None)
     try:
         if sys.platform == "win32":

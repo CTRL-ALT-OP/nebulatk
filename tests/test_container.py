@@ -9,13 +9,12 @@ sys.path.insert(
 )
 
 import nebulatk as ntk
-from nebulatk import _window_internal
 from nebulatk import bounds_manager, standard_methods
 
 
 @pytest.fixture
 def app():
-    window = _window_internal(
+    window = ntk._window_internal(
         title="Container Test",
         width=800,
         height=600,

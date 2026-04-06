@@ -8,7 +8,6 @@ sys.path.insert(
 )
 
 import nebulatk as ntk
-from nebulatk import _window_internal
 
 
 class _ClipboardRoot:
@@ -34,7 +33,7 @@ class _ClipboardRoot:
 @pytest.fixture
 def canvas() -> ntk.Window:
     """Create a test window for widget testing."""
-    window = _window_internal(
+    window = ntk._window_internal(
         title="Test Window",
         width=800,
         height=500,

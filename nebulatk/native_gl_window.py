@@ -287,76 +287,8 @@ class NativeGLWindow:
                 break
             self._handle_process_message(message)
 
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_close_requested(self, _window):
-        callback = self._protocol_handlers.get("WM_DELETE_WINDOW")
-        if callback is not None:
-            callback()
-        else:
-            self.quit()
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_cursor_pos(self, _window, x, y):
-        with self._event_lock:
-            self._mouse_x, self._mouse_y = int(x), int(y)
-            event = NativeEvent(x=int(x), y=int(y))
-        self._dispatch("<Motion>", event)
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_cursor_enter(self, _window, entered):
-        if not entered:
-            with self._event_lock:
-                event = NativeEvent(x=self._mouse_x, y=self._mouse_y)
-            self._dispatch("<Leave>", event)
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_mouse_button(self, _window, button, action, _mods):
-        with self._event_lock:
-            event = NativeEvent(x=self._mouse_x, y=self._mouse_y)
-        if button == glfw.MOUSE_BUTTON_LEFT and action == glfw.PRESS:
-            self._dispatch("<Button-1>", event)
-        elif button == glfw.MOUSE_BUTTON_LEFT and action == glfw.RELEASE:
-            self._dispatch("<ButtonRelease-1>", event)
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_scroll(self, _window, xoffset, yoffset):
-        with self._event_lock:
-            event = NativeEvent(
-                x=self._mouse_x,
-                y=self._mouse_y,
-                delta=int(round(float(yoffset) * 120.0)),
-                delta_x=int(round(float(xoffset) * 120.0)),
-                delta_y=int(round(float(yoffset) * 120.0)),
-            )
-        self._dispatch("<MouseWheel>", event)
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_char(self, _window, codepoint):
-        try:
-            char = chr(int(codepoint))
-        except (TypeError, ValueError):
-            return
-        if not _is_text_input_char(char):
-            return
-        keysym = char.lower() if char.isalpha() else char
-        with self._event_lock:
-            event = NativeEvent(
-                x=self._mouse_x, y=self._mouse_y, keysym=keysym, char=char
-            )
-        self._dispatch("<Key>", event)
-
     def _key_name(self, key):
         return _glfw_key_name(key)
-
-    # Kept for API/test compatibility; subprocess callbacks are primary.
-    def _on_key(self, _window, key, scancode, action, mods):
-        with self._event_lock:
-            event = _build_key_event(self._mouse_x, self._mouse_y, key, scancode)
-        if action in (glfw.PRESS, glfw.REPEAT):
-            if _should_dispatch_keypress_event(event.keysym, event.char, mods):
-                self._dispatch("<Key>", event)
-        elif action == glfw.RELEASE:
-            self._dispatch("<KeyRelease>", event)
 
     @property
     def available(self):

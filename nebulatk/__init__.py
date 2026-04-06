@@ -1,6 +1,5 @@
 from .nebulatk import (
     Window,
-    _window_internal,
     FileDialog,
     Button,
     Label,
@@ -22,7 +21,6 @@ from . import file_manager
 
 __all__ = [
     "Window",
-    "_window_internal",
     "FileDialog",
     "Button",
     "Label",

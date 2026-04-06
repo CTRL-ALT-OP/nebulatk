@@ -43,11 +43,11 @@ def test_resize_image(test_image_path):
     assert resized.image.size == (50, 75)
 
 
-def test_convert_image_returns_pil():
+def test_image_accepts_pil_inputs_directly():
     pil_image = PILImage.new("RGB", (100, 100), color="red")
-    converted = image_manager.convert_image(MagicMock(), pil_image)
-    assert converted is pil_image
-    assert isinstance(converted, PILImage.Image)
+    wrapped = image_manager.Image(pil_image)
+    assert wrapped.image is not None
+    assert isinstance(wrapped.image, PILImage.Image)
 
 
 def test_load_image_generic_returns_pil_for_image_gl(test_image_path):

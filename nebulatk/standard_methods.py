@@ -30,19 +30,6 @@ SLIDER_OBJECTS = ["slider_object", "slider_bg_object"]
 ALL_OBJECTS = IMAGE_OBJECTS + BG_OBJECTS + TEXT_OBJECTS  # + SLIDER_OBJECTS
 
 
-def check(_object, attribute):
-    """Check if the given attribute is defined and is not None.
-
-    Args:
-        _object (nebulatk.Widget): widget
-        attribute (str): attribute
-
-    Returns:
-        bool: Returns True if both checks are satisfied, False otherwise
-    """
-    return bool(hasattr(_object, attribute) and getattr(_object, attribute) is not None)
-
-
 # Unfortunately not included in the python math library
 def clamp(number, minimum=0, maximum=0):
     """Implement clamp method
@@ -312,15 +299,6 @@ def delete(_object, delayed=False):
     _request_redraw(_object)
 
 
-# ------------------------------------------------------------ DELETION SCHEDULING BEHAVIOUR -----------------------------------------------
-def schedule_delete(_object):
-    return
-
-
-def delete_scheduled(_object):
-    _object._scheduled_deletion = []
-
-
 # ------------------------------------------------------------ HOVERING BEHAVIOUR -----------------------------------------------------------
 
 
@@ -447,34 +425,3 @@ def clicked_toggle(_object):
 
 
 # ------------------------------------------------------------ POSITION BEHAVIOURS ----------------------------------------------------------
-
-
-def update_positions(_object, x, y, avoid_slider=False):
-    """Update positions of all objects
-
-    Args:
-        _object (nebulatk.Widget): widget
-        x (int): x position
-        y (int): y position
-        avoid_slider (bool, optional): Request to avoid touching the slider background objects. Defaults to False.
-    """
-    _object._position = [int(x), int(y)]
-    _request_redraw(_object)
-
-
-# ------------------------------------------------------------ PLACEMENT BEHAVIOURS ---------------------------------------------------------
-
-
-def place_bulk(_object, x, y):
-    """Bulk place objects
-
-    Args:
-        _object (nebulatk.Widget): widget
-    """
-    _object._position = [int(x), int(y)]
-    flop_on(_object)
-    _request_redraw(_object)
-
-
-def generate_text(_object, x, y):
-    _request_redraw(_object)

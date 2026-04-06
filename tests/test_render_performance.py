@@ -2,7 +2,6 @@ import os
 import sys
 import time
 from statistics import mean, pstdev
-from unittest.mock import patch
 
 import pytest
 from PIL import Image as PILImage
@@ -223,31 +222,23 @@ def test_image_gl_first_render_time_stable_over_runs():
     assert max(times) < 3.0, f"Worst first render too slow: {max(times):.3f}s"
 
 
-def test_image_gl_creation_skips_tk_image_conversion():
+def test_image_gl_creation_with_pil_assets():
     """
-    Ensure image_gl mode does not perform tkinter PhotoImage conversion when
-    creating image-backed widgets.
+    Ensure image_gl mode can create image-backed widgets from PIL assets.
     """
     pil_variants = _create_button_variant_images()
 
-    with patch("nebulatk.image_manager.convert_image") as convert_mock:
-        window = ntk.Window(
-            title="ImageGL conversion trim test",
-            width=320,
-            height=180,
-            render_mode="image_gl",
-            fps=60,
-        )
-        try:
-            _wait_for_renderer(window)
-            buttons = _build_image_button_grid(window, pil_variants, rows=2, cols=2)
-            _log_perf(
-                "image conversion bypass",
-                button_count=len(buttons),
-                convert_call_count=convert_mock.call_count,
-            )
-            assert len(buttons) == 4
-        finally:
-            _close_window_safe(window)
-
-    assert convert_mock.call_count == 0
+    window = ntk.Window(
+        title="ImageGL PIL asset test",
+        width=320,
+        height=180,
+        render_mode="image_gl",
+        fps=60,
+    )
+    try:
+        _wait_for_renderer(window)
+        buttons = _build_image_button_grid(window, pil_variants, rows=2, cols=2)
+        _log_perf("image asset creation", button_count=len(buttons))
+        assert len(buttons) == 4
+    finally:
+        _close_window_safe(window)

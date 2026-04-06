@@ -8,7 +8,9 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../nebulatk"))
 )
 
-from nebulatk import _window_internal
+import nebulatk as ntk
+
+_window_internal = ntk._window_internal
 
 
 def _mock_widget(hit=True, can_focus=True, children=None):
@@ -170,10 +172,10 @@ def test_execute_in_window_thread_times_out_when_queue_not_processed():
         window._execute_in_window_thread(lambda: None)
 
 
-def test_configure_rejects_legacy_object_argument():
+def test_configure_updates_title_without_legacy_object_argument():
     window = _window_internal(width=200, height=100)
-    with pytest.raises(TypeError, match="_object is not supported"):
-        window.configure(object(), title="No-op")
+    window.configure(title="Updated")
+    assert window.title == "Updated"
 
 
 def test_closing_command_invoked_once():
