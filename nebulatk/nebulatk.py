@@ -27,7 +27,7 @@ if __package__:
     from .widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from .widgets import Button, Label, Entry, Frame, Slider, Container
+    from .widgets import Button, Label, Entry, Frame, Slider, Scrollbar, Container
 
 else:
     import bounds_manager
@@ -45,7 +45,7 @@ else:
     from widgets.base import Component, _widget, _widget_properties
 
     # Import widget classes from widgets module
-    from widgets import Button, Label, Entry, Frame, Slider, Container
+    from widgets import Button, Label, Entry, Frame, Slider, Scrollbar, Container
 
 
 FileDialog = file_manager.FileDialog

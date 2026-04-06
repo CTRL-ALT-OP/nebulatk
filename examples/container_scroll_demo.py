@@ -57,7 +57,7 @@ def __main__():
 
     ntk.Label(
         window,
-        text="Scrollable container demo (clipped + transparency through container)",
+        text="Two-axis scroll demo (horizontal + vertical grid scrolling)",
         width=560,
         height=28,
         justify="left",
@@ -67,10 +67,25 @@ def __main__():
         font=("Helvetica", 14),
     ).place(24, 332)
 
-    content_height = 920
+    grid_columns = 10
+    grid_rows = 16
+    cell_width = 140
+    cell_height = 56
+    grid_gap = 8
+    grid_padding = 10
+    grid_origin_x = 10
+    grid_origin_y = 74
+
+    content_width = (grid_padding * 2) + (grid_columns * cell_width) + (
+        (grid_columns - 1) * grid_gap
+    )
+    content_height = (grid_origin_y + grid_padding) + (grid_rows * cell_height) + (
+        (grid_rows - 1) * grid_gap
+    )
+
     content = ntk.Frame(
         viewport,
-        width=548,
+        width=content_width,
         height=content_height,
         fill="#1a2b4d00",
         border_width=0,
@@ -78,7 +93,7 @@ def __main__():
 
     ntk.Frame(
         content,
-        width=532,
+        width=420,
         height=52,
         fill="#7aa2ffd0",
         border="#e7f0ffff",
@@ -86,8 +101,8 @@ def __main__():
     ).place(8, 8)
     ntk.Label(
         content,
-        text="Top marker: stripes behind this panel should remain visible.",
-        width=520,
+        text="Drag bottom bar for X, right bar for Y.",
+        width=408,
         height=44,
         justify="left",
         fill="#7aa2ffd0",
@@ -95,30 +110,37 @@ def __main__():
         font=("Helvetica", 13),
     ).place(14, 12)
 
-    for idx in range(22):
-        row_y = 72 + (idx * 40)
-        row_fill = "#2a4478aa" if idx % 2 == 0 else "#35548eaa"
-        ntk.Frame(
-            content,
-            width=532,
-            height=34,
-            fill=row_fill,
-            border="#5f7bb8aa",
-            border_width=1,
-        ).place(8, row_y)
-        ntk.Label(
-            content,
-            text=f"Row {idx + 1:02d}  -  Scroll offset driven by slider",
-            width=520,
-            height=30,
-            justify="left",
-            fill="#ffffff00",
-            text_color="#ecf2ffff",
-            border_width=0,
-            font=("Helvetica", 13),
-        ).place(14, row_y + 2)
+    for row in range(grid_rows):
+        for col in range(grid_columns):
+            cell_x = grid_origin_x + col * (cell_width + grid_gap)
+            cell_y = grid_origin_y + row * (cell_height + grid_gap)
+            row_even = row % 2 == 0
+            col_even = col % 2 == 0
+            if row_even == col_even:
+                cell_fill = "#2a4478aa"
+            else:
+                cell_fill = "#35548eaa"
+            ntk.Frame(
+                content,
+                width=cell_width,
+                height=cell_height,
+                fill=cell_fill,
+                border="#5f7bb8aa",
+                border_width=1,
+            ).place(cell_x, cell_y)
+            ntk.Label(
+                content,
+                text=f"r{row + 1:02d} c{col + 1:02d}",
+                width=cell_width - 12,
+                height=cell_height - 12,
+                justify="left",
+                fill="#ffffff00",
+                text_color="#ecf2ffff",
+                border_width=0,
+                font=("Helvetica", 13),
+            ).place(cell_x + 6, cell_y + 6)
 
-    scrollbar = ntk.Slider(
+    h_scrollbar = ntk.Scrollbar(
         window,
         width=560,
         height=24,
@@ -133,18 +155,45 @@ def __main__():
         slider_active_hover_fill="#c0d2ffd8",
         slider_border="#0b1020ff",
         slider_border_width=1,
+        direction="horizontal",
     ).place(24, 370)
 
-    max_scroll = max(0, content_height - viewport.height + 12)
-    _last_offset = {"value": None}
+    v_scrollbar = ntk.Scrollbar(
+        window,
+        width=24,
+        height=300,
+        fill="#1a2646d8",
+        border="#5f7bb8ff",
+        border_width=1,
+        slider_width=24,
+        slider_height=72,
+        slider_fill="#7aa2ffd8",
+        slider_active_fill="#a5bfffd8",
+        slider_hover_fill="#8fb2ffd8",
+        slider_active_hover_fill="#c0d2ffd8",
+        slider_border="#0b1020ff",
+        slider_border_width=1,
+        direction="vertical",
+    ).place(592, 24)
+
+    max_scroll_x = max(0, content_width - viewport.width + 12)
+    max_scroll_y = max(0, content_height - viewport.height + 12)
+    _last_offset = {"x": None, "y": None}
 
     def sync_scroll():
-        track_width = max(1, scrollbar.width - scrollbar.button.width)
-        ratio = float(scrollbar.button.x) / float(track_width)
-        offset = int(round(max_scroll * ratio))
-        if offset != _last_offset["value"]:
-            content.place(6, 6 - offset)
-            _last_offset["value"] = offset
+        h_track = max(1, h_scrollbar.width - h_scrollbar.button.width)
+        h_ratio = float(h_scrollbar.button.x) / float(h_track)
+        x_offset = int(round(max_scroll_x * h_ratio))
+
+        v_track = max(1, v_scrollbar.height - v_scrollbar.button.height)
+        v_ratio = float(v_scrollbar.button.y) / float(v_track)
+        y_offset = int(round(max_scroll_y * v_ratio))
+
+        if x_offset != _last_offset["x"] or y_offset != _last_offset["y"]:
+            content.place(6 - x_offset, 6 - y_offset)
+            _last_offset["x"] = x_offset
+            _last_offset["y"] = y_offset
+
         window.root.after(16, sync_scroll)
 
     sync_scroll()

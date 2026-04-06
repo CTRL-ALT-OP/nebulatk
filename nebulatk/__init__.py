@@ -7,6 +7,7 @@ from .nebulatk import (
     Entry,
     Frame,
     Slider,
+    Scrollbar,
     Container,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "Entry",
     "Frame",
     "Slider",
+    "Scrollbar",
     "Container",
     "colors_manager",
     "image_manager",

@@ -52,6 +52,7 @@ class Slider(_widget):
         # Bound Variables
         slider_bounds_type: str = "default",
         slider_custom_bounds: list = None,
+        direction: str = "horizontal",
         resize: bool = False,
         style=None,
     ):
@@ -113,6 +114,9 @@ class Slider(_widget):
         self.can_hover = False
         self.can_click = False
         self.can_type = False
+        self.direction = (direction or "horizontal").lower()
+        if self.direction not in ("horizontal", "vertical"):
+            raise ValueError("direction must be either 'horizontal' or 'vertical'")
         self.button = Button(
             self,
             width=slider_width,
@@ -137,14 +141,20 @@ class Slider(_widget):
             dragging_command=self._dragging,
         ).place()
 
-    # Implement dragging along x axis for slider
+    # Implement dragging along the configured axis for slider.
     def _dragging(self, x, y):
-        # Change our x position to be on the edge of the slider
-        # this has the effect of the mouse moving the slider from the center of the slider
+        if self.direction == "vertical":
+            # Move the slider based on mouse Y from the button center.
+            y = y - self.button.height / 2
+            y = standard_methods.clamp(y, 0, self.height - self.button.height)
+            self.button.place(self.button.x, y)
+            return
+
+        # Move the slider based on mouse X from the button center.
         x = x - self.button.width / 2
-
-        # Clamp our x to the minimum and maximum values, compensating for the position offset,
         x = standard_methods.clamp(x, 0, self.width - self.button.width)
-
-        # Update the positions of all the objects in the slider, avoiding updating the actual background and widget positions
         self.button.place(x, self.button.y)
+
+
+class Scrollbar(Slider):
+    pass
