@@ -76,11 +76,15 @@ def __main__():
     grid_origin_x = 10
     grid_origin_y = 74
 
-    content_width = (grid_padding * 2) + (grid_columns * cell_width) + (
-        (grid_columns - 1) * grid_gap
+    content_width = (
+        (grid_padding * 2)
+        + (grid_columns * cell_width)
+        + ((grid_columns - 1) * grid_gap)
     )
-    content_height = (grid_origin_y + grid_padding) + (grid_rows * cell_height) + (
-        (grid_rows - 1) * grid_gap
+    content_height = (
+        (grid_origin_y + grid_padding)
+        + (grid_rows * cell_height)
+        + ((grid_rows - 1) * grid_gap)
     )
 
     content = ntk.Frame(
@@ -140,6 +144,20 @@ def __main__():
                 font=("Helvetica", 13),
             ).place(cell_x + 6, cell_y + 6)
 
+    max_scroll_x = max(0, content_width - viewport.width + 12)
+    max_scroll_y = max(0, content_height - viewport.height + 12)
+
+    def apply_scroll(x, y):
+        h_track = max(1, h_scrollbar.width - h_scrollbar.button.width)
+        h_ratio = float(h_scrollbar.button.x) / float(h_track)
+        x_offset = int(round(max_scroll_x * h_ratio))
+
+        v_track = max(1, v_scrollbar.height - v_scrollbar.button.height)
+        v_ratio = float(v_scrollbar.button.y) / float(v_track)
+        y_offset = int(round(max_scroll_y * v_ratio))
+
+        content.place(6 - x_offset, 6 - y_offset)
+
     h_scrollbar = ntk.Scrollbar(
         window,
         width=560,
@@ -156,6 +174,9 @@ def __main__():
         slider_border="#0b1020ff",
         slider_border_width=1,
         direction="horizontal",
+        scroll_target=viewport,
+        side_scrolling=True,
+        dragging_command=apply_scroll,
     ).place(24, 370)
 
     v_scrollbar = ntk.Scrollbar(
@@ -174,29 +195,11 @@ def __main__():
         slider_border="#0b1020ff",
         slider_border_width=1,
         direction="vertical",
+        scroll_target=viewport,
+        dragging_command=apply_scroll,
     ).place(592, 24)
 
-    max_scroll_x = max(0, content_width - viewport.width + 12)
-    max_scroll_y = max(0, content_height - viewport.height + 12)
-    _last_offset = {"x": None, "y": None}
-
-    def sync_scroll():
-        h_track = max(1, h_scrollbar.width - h_scrollbar.button.width)
-        h_ratio = float(h_scrollbar.button.x) / float(h_track)
-        x_offset = int(round(max_scroll_x * h_ratio))
-
-        v_track = max(1, v_scrollbar.height - v_scrollbar.button.height)
-        v_ratio = float(v_scrollbar.button.y) / float(v_track)
-        y_offset = int(round(max_scroll_y * v_ratio))
-
-        if x_offset != _last_offset["x"] or y_offset != _last_offset["y"]:
-            content.place(6 - x_offset, 6 - y_offset)
-            _last_offset["x"] = x_offset
-            _last_offset["y"] = y_offset
-
-        window.root.after(16, sync_scroll)
-
-    sync_scroll()
+    apply_scroll(0, 0)
 
 
 if __name__ == "__main__":

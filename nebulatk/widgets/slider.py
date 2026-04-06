@@ -3,12 +3,14 @@ from .button import Button
 
 try:
     from .. import (
+        bounds_manager,
         fonts_manager,
         colors_manager,
         image_manager,
         standard_methods,
     )
 except ImportError:
+    import bounds_manager
     import fonts_manager
     import colors_manager
     import image_manager
@@ -53,6 +55,7 @@ class Slider(_widget):
         slider_bounds_type: str = "default",
         slider_custom_bounds: list = None,
         direction: str = "horizontal",
+        dragging_command=None,
         resize: bool = False,
         style=None,
     ):
@@ -117,6 +120,7 @@ class Slider(_widget):
         self.direction = (direction or "horizontal").lower()
         if self.direction not in ("horizontal", "vertical"):
             raise ValueError("direction must be either 'horizontal' or 'vertical'")
+        self._dragging_command = dragging_command
         self.button = Button(
             self,
             width=slider_width,
@@ -138,8 +142,13 @@ class Slider(_widget):
             active_hover_image=slider_active_hover_image,
             bounds_type=slider_bounds_type,
             custom_bounds=slider_custom_bounds,
-            dragging_command=self._dragging,
+            dragging_command=self._wrapped_dragging,
         ).place()
+
+    def _wrapped_dragging(self, x, y):
+        self._dragging(x, y)
+        if self._dragging_command is not None:
+            self._dragging_command(x, y)
 
     # Implement dragging along the configured axis for slider.
     def _dragging(self, x, y):
@@ -157,4 +166,66 @@ class Slider(_widget):
 
 
 class Scrollbar(Slider):
-    pass
+    def __init__(
+        self,
+        *args,
+        scroll_target=None,
+        scroll_step=20,
+        side_scrolling=False,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.scroll_target = self if scroll_target is None else scroll_target
+        self.scroll_step = max(1, int(scroll_step))
+        self.side_scrolling = bool(side_scrolling)
+
+    def _wheel_notches(self, event, axis="y"):
+        if axis == "y" and hasattr(event, "num"):
+            if event.num == 4:
+                return 1
+            if event.num == 5:
+                return -1
+
+        if axis == "x":
+            delta = int(getattr(event, "delta_x", 0) or 0)
+        else:
+            delta = int(getattr(event, "delta_y", getattr(event, "delta", 0)) or 0)
+        if delta == 0:
+            return 0
+        if delta % 120 == 0:
+            return int(delta / 120)
+        return 1 if delta > 0 else -1
+
+    def handles_scroll_event(self, event, event_x=None, event_y=None):
+        target = self if self.scroll_target is None else self.scroll_target
+        if event_x is None:
+            event_x = getattr(event, "x", None)
+        if event_y is None:
+            event_y = getattr(event, "y", None)
+        if event_x is None or event_y is None:
+            return False
+        event_x = int(event_x)
+        event_y = int(event_y)
+        if not bounds_manager.check_hit(
+            target, event_x, event_y, require_focus=False
+        ):
+            return False
+
+        if self.button.dragging_command is None:
+            return False
+
+        scroll_axis = "x" if self.side_scrolling else "y"
+        notches = self._wheel_notches(event, axis=scroll_axis)
+        if notches == 0:
+            return False
+
+        movement = -notches * self.scroll_step
+        center_x = self.button.x + (self.button.width / 2)
+        center_y = self.button.y + (self.button.height / 2)
+        if self.direction == "vertical":
+            center_y += movement
+        else:
+            center_x += movement
+
+        self.button.dragging_command(center_x, center_y)
+        return True

@@ -57,7 +57,7 @@ def generate_bounds_for_nonstandard_image(image, tolerance=0.75):
     return bounds
 
 
-def check_hit(_object, x, y):
+def check_hit(_object, x, y, require_focus=True):
     """Checks if a point is inside a given object's rectangular bounds approximation"""
     if not _object.initialized:
         return False
@@ -73,7 +73,7 @@ def check_hit(_object, x, y):
     if not global_visible:
         return False
 
-    if not _object.can_focus:
+    if require_focus and not _object.can_focus:
         return False
 
     hit = (int(x), int(y))

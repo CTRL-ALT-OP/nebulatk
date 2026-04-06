@@ -97,6 +97,10 @@ class NativeEvent:
     y: int = 0
     char: str = ""
     keysym: str = ""
+    delta: int = 0
+    delta_x: int = 0
+    delta_y: int = 0
+    num: int = 0
 
 
 def _build_key_event(mouse_x, mouse_y, key=None, scancode=0):
@@ -250,6 +254,10 @@ class NativeGLWindow:
                 y=int(message.get("y", 0)),
                 keysym=str(message.get("keysym", "")),
                 char=str(message.get("char", "")),
+                delta=int(message.get("delta", 0) or 0),
+                delta_x=int(message.get("delta_x", 0) or 0),
+                delta_y=int(message.get("delta_y", 0) or 0),
+                num=int(message.get("num", 0) or 0),
             )
             with self._event_lock:
                 self._mouse_x, self._mouse_y = event.x, event.y
@@ -309,6 +317,18 @@ class NativeGLWindow:
             self._dispatch("<Button-1>", event)
         elif button == glfw.MOUSE_BUTTON_LEFT and action == glfw.RELEASE:
             self._dispatch("<ButtonRelease-1>", event)
+
+    # Kept for API/test compatibility; subprocess callbacks are primary.
+    def _on_scroll(self, _window, xoffset, yoffset):
+        with self._event_lock:
+            event = NativeEvent(
+                x=self._mouse_x,
+                y=self._mouse_y,
+                delta=int(round(float(yoffset) * 120.0)),
+                delta_x=int(round(float(xoffset) * 120.0)),
+                delta_y=int(round(float(yoffset) * 120.0)),
+            )
+        self._dispatch("<MouseWheel>", event)
 
     # Kept for API/test compatibility; subprocess callbacks are primary.
     def _on_char(self, _window, codepoint):
@@ -637,7 +657,17 @@ def _native_window_process_main(
         needs_present = True
         close_request_deadline = None
 
-        def send_event(name, x=0, y=0, keysym="", char=""):
+        def send_event(
+            name,
+            x=0,
+            y=0,
+            keysym="",
+            char="",
+            delta=0,
+            delta_x=0,
+            delta_y=0,
+            num=0,
+        ):
             event_queue.put(
                 {
                     "type": "event",
@@ -647,6 +677,10 @@ def _native_window_process_main(
                     "y": int(y),
                     "keysym": keysym,
                     "char": char,
+                    "delta": int(delta),
+                    "delta_x": int(delta_x),
+                    "delta_y": int(delta_y),
+                    "num": int(num),
                 }
             )
 
@@ -691,6 +725,17 @@ def _native_window_process_main(
             elif button == glfw.MOUSE_BUTTON_LEFT and action == glfw.RELEASE:
                 send_event("<ButtonRelease-1>", mouse_state["x"], mouse_state["y"])
 
+        def on_scroll(_window, xoffset, yoffset):
+            # Match tkinter-style MouseWheel semantics (positive == scroll up).
+            send_event(
+                "<MouseWheel>",
+                mouse_state["x"],
+                mouse_state["y"],
+                delta=int(round(float(yoffset) * 120.0)),
+                delta_x=int(round(float(xoffset) * 120.0)),
+                delta_y=int(round(float(yoffset) * 120.0)),
+            )
+
         def on_key(_window, key, scancode, action, mods):
             event = _build_key_event(mouse_state["x"], mouse_state["y"], key, scancode)
             if action in (glfw.PRESS, glfw.REPEAT):
@@ -725,6 +770,7 @@ def _native_window_process_main(
         glfw.set_cursor_pos_callback(window, on_cursor_pos)
         glfw.set_cursor_enter_callback(window, on_cursor_enter)
         glfw.set_mouse_button_callback(window, on_mouse_button)
+        glfw.set_scroll_callback(window, on_scroll)
         glfw.set_key_callback(window, on_key)
         glfw.set_char_callback(window, on_char)
         glfw.set_window_refresh_callback(window, on_window_refresh)

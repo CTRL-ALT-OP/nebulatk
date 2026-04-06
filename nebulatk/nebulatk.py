@@ -244,6 +244,32 @@ class _window_internal(threading.Thread, Component):
             # Update the currently hovered object
             self.hovered = hovered_new
 
+    def scroll(self, event):
+        event_x = getattr(event, "x", None)
+        event_y = getattr(event, "y", None)
+        if event_x is None or event_y is None:
+            if hasattr(self.root, "winfo_pointerx") and hasattr(
+                self.root, "winfo_rootx"
+            ):
+                event_x = self.root.winfo_pointerx() - self.root.winfo_rootx()
+            if hasattr(self.root, "winfo_pointery") and hasattr(
+                self.root, "winfo_rooty"
+            ):
+                event_y = self.root.winfo_pointery() - self.root.winfo_rooty()
+        if event_x is None or event_y is None:
+            return
+        event_x = int(event_x)
+        event_y = int(event_y)
+
+        handled = False
+        for widget in self._iter_widgets():
+            if not isinstance(widget, Scrollbar):
+                continue
+            if widget.handles_scroll_event(event, event_x, event_y):
+                handled = True
+        if handled:
+            return
+
     # Handle the mouse leaving the window
     def leave_window(self, event):
         # If something was being hovered, trigger the hover_end event
@@ -592,6 +618,9 @@ class _window_internal(threading.Thread, Component):
             self.bind("<ButtonRelease-1>", self.click_up)
             self.bind("<Key>", self.typing)
             self.bind("<KeyRelease>", self.typing_up)
+            self.bind("<MouseWheel>", self.scroll)
+            self.bind("<Button-4>", self.scroll)
+            self.bind("<Button-5>", self.scroll)
             self.root.protocol("WM_DELETE_WINDOW", close)
             self.bind("<Motion>", self.hover)
             self.bind("<Leave>", self.leave_window)
