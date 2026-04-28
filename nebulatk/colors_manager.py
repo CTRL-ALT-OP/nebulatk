@@ -137,19 +137,7 @@ def convert_to_hex(color):
                 return stripped
             if len(value) == 8:
                 return stripped
-            raise ValueError(
-                "Hex colors must be in #RRGGBB or #RRGGBBAA format."
-            )
-
-        # If it is a hex string, add '#' to the beginning and return it
-        if all(c in string.hexdigits for c in stripped):
-            if len(stripped) == 6:
-                return f"#{stripped}ff".lower()
-            if len(stripped) == 8:
-                return f"#{stripped}".lower()
-            raise ValueError(
-                "Hex colors without '#' must use 6 or 8 hex characters."
-            )
+            raise ValueError("Hex colors must be in #RRGGBB or #RRGGBBAA format.")
 
         # If it's not a hex string, it must be a default color name.
         key = stripped.lower()
@@ -171,9 +159,7 @@ def convert_to_hex(color):
             return "#%02x%02x%02x%02x".lower() % color
         return "#%02x%02x%02xff".lower() % color
 
-    raise TypeError(
-        "Unsupported color type. Expected str, list, tuple, or Color."
-    )
+    raise TypeError("Unsupported color type. Expected str, list, tuple, or Color.")
 
 
 def convert_to_rgb(color):
@@ -224,9 +210,7 @@ def convert_to_rgb(color):
         color = (*color, 255) if len(color) < 4 else tuple(color)
         return color
 
-    raise TypeError(
-        "Unsupported color type. Expected str, list, tuple, or Color."
-    )
+    raise TypeError("Unsupported color type. Expected str, list, tuple, or Color.")
 
 
 def check_full_white_or_black(color):

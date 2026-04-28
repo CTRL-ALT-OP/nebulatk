@@ -2,9 +2,10 @@ from .base import Component
 
 # Import modules needed for widget management
 try:
-    from .. import bounds_manager
+    from .. import bounds_manager, standard_methods
 except ImportError:
     import bounds_manager
+    import standard_methods
 
 
 class Container(Component):
@@ -98,11 +99,9 @@ class Container(Component):
     def click(self, event):
         x = int(event.x)
         y = int(event.y)
+        abs_x, abs_y = self._event_position_to_abs(x, y)
 
-        active_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
+        active_new = self._find_deepest_hit(self.children, abs_x, abs_y)
 
         if active_new is not self.active:
             if self.active is not None:
@@ -112,7 +111,7 @@ class Container(Component):
         if active_new is not self.down:
             self.down = active_new
             if active_new is not None:
-                active_new.clicked(x, y)
+                active_new.clicked(abs_x, abs_y)
 
     def click_up(self, event):
         if self.down:
@@ -122,13 +121,11 @@ class Container(Component):
     def hover(self, event):
         x = int(event.x)
         y = int(event.y)
+        abs_x, abs_y = self._event_position_to_abs(x, y)
         if self.down is not None:
-            self.down.dragging(x, y)
+            self.down.dragging(abs_x, abs_y)
 
-        hovered_new = next(
-            (child for child in self.children if bounds_manager.check_hit(child, x, y)),
-            None,
-        )
+        hovered_new = self._find_deepest_hit(self.children, abs_x, abs_y)
 
         if hovered_new is not self.hovered_child:
             if self.hovered_child is not None:
@@ -183,6 +180,52 @@ class Container(Component):
 
     def change_active(self):
         pass
+
+    def _event_position_to_abs(self, x, y):
+        return standard_methods.rel_position_to_abs(self, self.x + x, self.y + y)
+
+    def _find_deepest_hit(self, children, x, y):
+        for child in children:
+            if not bounds_manager.check_hit(child, x, y):
+                continue
+            nested_children = getattr(child, "children", [])
+            if nested_children:
+                nested = self._find_deepest_hit(nested_children, x, y)
+                if nested is not None:
+                    return nested
+            if getattr(child, "can_focus", True):
+                return child
+        return None
+
+    def _iter_destroy_targets(self):
+        for child in list(self.children):
+            yield child
+            yield from self._iter_child_destroy_targets(child)
+
+    def _iter_child_destroy_targets(self, child):
+        for nested_child in list(getattr(child, "children", [])):
+            yield nested_child
+            yield from self._iter_child_destroy_targets(nested_child)
+
+    def _clear_interaction_targets(self, owner, targets):
+        for attr in ("active", "down", "hovered", "hovered_child"):
+            if getattr(owner, attr, None) in targets:
+                setattr(owner, attr, None)
+
+    def destroy(self):
+        targets = {self, *self._iter_destroy_targets()}
+
+        self._clear_interaction_targets(self, targets)
+        self._clear_interaction_targets(self._window, targets)
+
+        for child in list(self.children):
+            child.destroy()
+        self.children.clear()
+
+        if hasattr(self._root, "children") and self in self._root.children:
+            self._root.children.remove(self)
+
+        self.request_redraw()
 
     def begin_render_batch(self):
         if hasattr(self._window, "begin_render_batch"):
