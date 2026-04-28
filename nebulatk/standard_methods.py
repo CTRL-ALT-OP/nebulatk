@@ -53,26 +53,32 @@ def sign(x):
 
 
 def rel_position_to_abs(_object, x, y):
-    # Add up positions for relative offsets in parent tree
+    # Add up offsets through the full parent chain.
     obj = _object
-    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
-        # Safety check: only add position if root has x and y attributes
-        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
-            x += obj.root.x
-            y += obj.root.y
-        obj = obj.root
+    while hasattr(obj, "root"):
+        parent = obj.root
+        if parent is None or parent is obj:
+            break
+        # Safety check: only add position if parent has x and y attributes.
+        if hasattr(parent, "x") and hasattr(parent, "y"):
+            x += parent.x
+            y += parent.y
+        obj = parent
     return x, y
 
 
 def abs_position_to_rel(_object, x, y):
-    # Add up positions for relative offsets in parent tree
+    # Subtract offsets through the full parent chain.
     obj = _object
-    while hasattr(obj, "root") and hasattr(obj, "master") and obj.root != obj.master:
-        # Safety check: only subtract position if root has x and y attributes
-        if hasattr(obj.root, "x") and hasattr(obj.root, "y"):
-            x -= obj.root.x
-            y -= obj.root.y
-        obj = obj.root
+    while hasattr(obj, "root"):
+        parent = obj.root
+        if parent is None or parent is obj:
+            break
+        # Safety check: only subtract position if parent has x and y attributes.
+        if hasattr(parent, "x") and hasattr(parent, "y"):
+            x -= parent.x
+            y -= parent.y
+        obj = parent
     return x, y
 
 
