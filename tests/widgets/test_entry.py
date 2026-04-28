@@ -45,6 +45,30 @@ def type_text(entry, text):
         entry.typed(KeyEvent(char, char))
 
 
+def test_entry_inside_container_uses_window_input_state(canvas) -> None:
+    """Container-hosted entries should read keyboard and clipboard state from the window."""
+    container = ntk.Container(canvas, width=240, height=80).place(20, 20)
+    entry = ntk.Entry(container, text="abcdef", width=200, height=40).place()
+
+    assert entry.cursor_animation in canvas.active_animations
+
+    set_cursor_position(entry, 2)
+    canvas.active_keys.append("Shift_L")
+    entry.typed(KeyEvent("Right"))
+    canvas.active_keys.remove("Shift_L")
+
+    assert entry.cursor_position == 3
+    assert entry._selection_start == 2
+    assert entry._selection_end == 3
+
+    canvas.root.clipboard_append(" pasted")
+    canvas.active_keys.append("Control_L")
+    entry.typed(KeyEvent("v", "v"))
+    canvas.active_keys.remove("Control_L")
+
+    assert entry.get() == "ab pasteddef"
+
+
 def test_entry_initialization(canvas: ntk.Window) -> None:
     """Test entry widget creation and initial property values."""
     entry = ntk.Entry(
@@ -105,6 +129,34 @@ def test_entry_configuration(canvas: ntk.Window) -> None:
 
     entry.height = 50
     assert entry.height == 50
+
+
+def test_empty_entry_default_font_resolves_before_typing(canvas: ntk.Window) -> None:
+    entry = ntk.Entry(canvas, width=100, height=40).place()
+
+    initial_size = entry.font[1]
+    assert initial_size > 0
+    assert entry.cursor.height > 0
+
+    entry.typed(KeyEvent("A", "A"))
+
+    assert entry.font[1] == initial_size
+    assert entry.cursor.height > 0
+
+
+def test_empty_entry_explicit_font_does_not_resize_on_typing(
+    canvas: ntk.Window,
+) -> None:
+    entry = ntk.Entry(
+        canvas,
+        width=100,
+        height=40,
+        font=("Helvetica", 13, "normal"),
+    ).place()
+
+    entry.typed(KeyEvent("A", "A"))
+
+    assert entry.font[1] == 13
 
 
 def test_entry_typing(text_entry) -> None:

@@ -227,26 +227,30 @@ class Animation:
         self.current_values = current_values
         self.target_values = target_values
 
-    def _run_on_ui_thread(self, callback):
+    def _owner_window(self):
         master = getattr(self.widget, "master", None)
-        if master is not None and hasattr(master, "_execute_in_window_thread"):
+        return getattr(master, "_window", master)
+
+    def _run_on_ui_thread(self, callback):
+        owner = self._owner_window()
+        if owner is not None and hasattr(owner, "_execute_in_window_thread"):
             try:
-                return master._execute_in_window_thread(callback)
+                return owner._execute_in_window_thread(callback)
             except RuntimeError:
                 return callback()
         return callback()
 
     def _register_active(self):
-        master = getattr(self.widget, "master", None)
-        active = getattr(master, "active_animations", None)
+        owner = self._owner_window()
+        active = getattr(owner, "active_animations", None)
         if active is None or self._registered_active:
             return
         active.append(self)
         self._registered_active = True
 
     def _unregister_active(self):
-        master = getattr(self.widget, "master", None)
-        active = getattr(master, "active_animations", None)
+        owner = self._owner_window()
+        active = getattr(owner, "active_animations", None)
         if active is None or not self._registered_active:
             return
         if self in active:

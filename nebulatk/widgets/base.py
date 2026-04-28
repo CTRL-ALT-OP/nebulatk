@@ -451,6 +451,19 @@ class _widget_properties:
     def font(self):
         return self._font
 
+    def _resolve_auto_font_size(self, font):
+        if len(font) < 3:
+            font = (font[0], font[1], "normal")
+        if font[1] != -1:
+            return font
+        return (
+            font[0],
+            fonts_manager.get_max_font_size(
+                self.master, font, self.width, self.height, self.text
+            ),
+            font[2],
+        )
+
     @font.setter
     def font(self, font):
         font, binding = self._resolve_default_value("font", font)
@@ -483,13 +496,10 @@ class _widget_properties:
             # Check if the font size is the default font size
             # If so, set it to the max font size possible for the widget size
             if font[1] == -1:
-                font = (
-                    font[0],
-                    fonts_manager.get_max_font_size(
-                        self.master, font, self.width, self.height, self.text
-                    ),
-                    font[2],
-                )
+                font = self._resolve_auto_font_size(font)
+
+        elif font[1] == -1:
+            font = self._resolve_auto_font_size(font)
 
         self._font = font
 
@@ -1023,6 +1033,9 @@ class _widget(_widget_properties, Component):
         if hasattr(self.master, "request_redraw"):
             self.master.request_redraw()
 
+    def _input_owner(self):
+        return getattr(self.master, "_window", self.master)
+
     def destroy(self):
         if hasattr(self.master, "defaults"):
             self.master.defaults.unsubscribe(self)
@@ -1073,9 +1086,9 @@ class _widget(_widget_properties, Component):
                 self.update()
 
         deleted_text = False
-        ctrl_or_cmd = {"Control_L", "Control_R", "Meta_L", "Meta_R"} & set(
-            self.master.active_keys
-        )
+        input_owner = self._input_owner()
+        active_keys = set(getattr(input_owner, "active_keys", []))
+        ctrl_or_cmd = {"Control_L", "Control_R", "Meta_L", "Meta_R"} & active_keys
 
         if (
             char.keysym in ["BackSpace", "Delete"]
@@ -1105,26 +1118,26 @@ class _widget(_widget_properties, Component):
             if self.cursor_position > 0:
                 self.cursor_position -= 1
                 self._selection_end = self.cursor_position
-            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+            if not {"Shift_L", "Shift_R"} & active_keys:
                 self._selection_start = self.cursor_position
 
         elif char.keysym == "Right":
             if self.cursor_position < len(self.entire_text):
                 self.cursor_position += 1
                 self._selection_end = self.cursor_position
-            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+            if not {"Shift_L", "Shift_R"} & active_keys:
                 self._selection_start = self.cursor_position
 
         elif char.keysym == "Home":
             self.cursor_position = 0
             self._selection_end = self.cursor_position
-            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+            if not {"Shift_L", "Shift_R"} & active_keys:
                 self._selection_start = self.cursor_position
 
         elif char.keysym == "End":
             self.cursor_position = len(self.entire_text)
             self._selection_end = self.cursor_position
-            if not {"Shift_L", "Shift_R"} & set(self.master.active_keys):
+            if not {"Shift_L", "Shift_R"} & active_keys:
                 self._selection_start = self.cursor_position
 
         elif char.keysym == "c" and ctrl_or_cmd:
@@ -1133,13 +1146,13 @@ class _widget(_widget_properties, Component):
                 selected_text = self.entire_text[
                     self._selection_start : self._selection_end
                 ]
-                self.master.root.clipboard_clear()
-                self.master.root.clipboard_append(selected_text)
+                input_owner.root.clipboard_clear()
+                input_owner.root.clipboard_append(selected_text)
 
         elif char.keysym == "v" and ctrl_or_cmd:
             update_selection_bounds()
             try:
-                clipboard_text = self.master.root.clipboard_get()
+                clipboard_text = input_owner.root.clipboard_get()
                 delete_selection()
             except Exception:
                 self._selection_start = self._selection_end = self.cursor_position
@@ -1289,16 +1302,7 @@ class _widget(_widget_properties, Component):
             source = (source[0], source[1], "normal")
         if source[1] != -1:
             return
-        if self.text not in ("", None):
-            self._font = (
-                source[0],
-                fonts_manager.get_max_font_size(
-                    self.master, source, self.width, self.height, self.text
-                ),
-                source[2],
-            )
-        else:
-            self._font = source
+        self._font = self._resolve_auto_font_size(source)
 
     def _configure_position(self, position):
         self._position = [int(position[0]), int(position[1])]

@@ -76,9 +76,7 @@ class Entry(_widget):
             Label(
                 root=self,
                 width=2,  # Thinner cursor for a more standard look
-                height=(
-                    self.font[1] * 1.2 if hasattr(self, "font") else 14
-                ),  # Match font height
+                height=self._get_cursor_height(),  # Match font height
                 fill="#000000",
                 border_width=0,
             )
@@ -111,6 +109,15 @@ class Entry(_widget):
 
         self._selection_bg.can_focus = False
 
+    def _get_cursor_height(self):
+        try:
+            return max(1, fonts_manager.get_font_metrics(self.master, self.font, "linespace"))
+        except Exception:
+            try:
+                return max(1, int(self.font[1] * 1.2))
+            except Exception:
+                return 14
+
     def _get_text_start_x(self, text=None):
         if text is None:
             text = self.text
@@ -128,7 +135,7 @@ class Entry(_widget):
         )
 
         # Adjust cursor height to match font height
-        self.cursor.height = self.font[1] * 1.2 if hasattr(self, "font") else 14
+        self.cursor.height = self._get_cursor_height()
 
         # Center vertically based on entry height
         self.cursor.y = (self.height - self.cursor.height) / 2

@@ -370,6 +370,29 @@ def loadfont(fontpath: str, private: bool = True, enumerable: bool = False) -> b
     return True
 
 
+def _max_font_size_for_height(root, font, height):
+    font = _normalize_font(font)
+    target_height = max(0, float(height))
+    if target_height <= 0:
+        try:
+            size = int(font[1])
+        except Exception:
+            size = 1
+        return max(1, size)
+
+    size = 1
+    prev_size = 1
+    curr_height = get_font_metrics(root, (font[0], size, font[2]), "linespace")
+    max_size = max(1, int(math.ceil(target_height * 4)) + 10)
+
+    while curr_height < target_height and size < max_size:
+        prev_size = size
+        size += 1
+        curr_height = get_font_metrics(root, (font[0], size, font[2]), "linespace")
+
+    return prev_size
+
+
 def get_max_font_size(root, font, width, height, text):
     """Find the maximum font size for a given font and dimensions.
 
@@ -388,6 +411,11 @@ def get_max_font_size(root, font, width, height, text):
     width *= 0.9
     height *= 0.9
 
+    font = _normalize_font(font)
+
+    if not text:
+        return _max_font_size_for_height(root, font, height)
+
     # The code will generate the maximum font size that can fit in the width, and a separate font size for the height
 
     # This size will be the font size for the width
@@ -397,8 +425,6 @@ def get_max_font_size(root, font, width, height, text):
     # This size will be the font size for the width
     size2 = 1
     prev_size2 = 0
-
-    font = _normalize_font(font)
 
     # Generate starting width of text given the font size
     curr_width = measure_text(root, (font[0], size, font[2]), text)
